@@ -5,12 +5,55 @@
         <title>Chromium test website</title>
     </head>
     <body>
-        <p>
-            Hello <b>World</b>!
-        </p>
-        <video  width="640" height="480" controls loop>
-            <source src="legend.mp4" type="video/mp4">
-            Video is not supported!
-        </video>
+        <script>
+            function openme() {
+                window.open(window.location.href, '_blank');
+            }
+        </script>
+        <table>
+            <tr>
+                <td>
+                    <h2>
+                        I am a Legend!
+                    </h2>
+                    <video  width="640" height="300" controls autoplay loop muted>
+                        <source src="legend.mp4" type="video/mp4">
+                        Video is not supported!
+                    </video>
+                </td>
+                <td>
+                    <h2>
+                        I am Big Buck Bunny!
+                    </h2>
+                    <video  width="640" height="300" controls autoplay loop muted>
+                        <source src="mov_bbb.mp4" type="video/mp4">
+                        Video is not supported!
+                    </video>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <h2>
+                        I am Big Buck Bunny!
+                    </h2>
+                    <video  width="640" height="300" controls autoplay loop muted>
+                        <source src="mov_bbb.mp4" type="video/mp4">
+                        Video is not supported!
+                    </video>
+                </td>
+                <td>
+                    <h2>
+                        I am a Legend!
+                    </h2>
+                    <video  width="640" height="300" controls autoplay loop muted>
+                        <source src="legend.mp4" type="video/mp4">
+                        Video is not supported!
+                    </video>
+                </td>
+            </tr>
+        </table>
+        <div>
+            <button type="button" onclick="openme();">Open a new tab!</button>
+        </div>
     </body>
 </html>
