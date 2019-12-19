@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Bresenham’s Line Generation Algorithm Demo</title>
+    </head>
+    <body>
+        <script>
+            function draw_line() {
+              var c = document.createElement("canvas");
+              c.width = 1200;
+              c.height = 600;
+              c.style = "padding: 10px; background: white;";
+              document.body.append(c);
+              var ctx = c.getContext("2d");
+
+              var ratio = 10;
+              var sx = 0, ex = 60 * 2;
+              var sy = 0, ey = 23.5 * 2;
+              var dx = ex - sx;
+              var dy = ey - sy;
+              var c = 0;
+              var y = sy;
+
+              ctx.transform(1, 0, 0, -1, 0, 500);
+              ctx.strokeStyle = 'rgb(100, 60, 250)';
+              for (var x = sx; x <= ex ; x++) {
+                ctx.rect(x * ratio, y * ratio, 1 * ratio, 1 * ratio);
+                c += dy;
+                if (c >= dx) {
+                    c -= dx;
+                    y++;
+                }
+              }
+              ctx.stroke();
+
+            }
+
+            window.onload = draw_line;
+        </script>
+
+    </body>
+</html>
