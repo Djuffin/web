@@ -2,7 +2,7 @@
 <html>
     <head>
         <meta charset="UTF-8">
-        <title>Bresenham’s Line Generation Algorithm Demo</title>
+        <title>Bresenham's Line Generation Algorithm Demo</title>
     </head>
     <body>
         <script>
@@ -30,6 +30,22 @@
                 if (c >= dx) {
                     c -= dx;
                     y++;
+                }
+              }
+              ctx.stroke();
+
+              ctx.transform(1, 0, 0, 1, 0, 30);
+              ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+              y = sy;
+              k = dx / dy;
+              for (var i = 0; i <= dy ; i++) {
+                y = i + sy;
+                x = Math.ceil(i * k);
+
+                var limit = Math.ceil((i + 1) * k) - Math.ceil(i * k);
+                for (var j = 0; j < limit; j++) {
+                    ctx.rect(x * ratio, y * ratio, 1 * ratio, 1 * ratio);
+                  x++;
                 }
               }
               ctx.stroke();
