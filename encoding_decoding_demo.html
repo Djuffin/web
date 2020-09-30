@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>WebCodecs API demo: Encoding and Decoding</title>
+</head>
+
+<body>
+  <script>
+    async function waitTillLoaded(img) {
+      if (img.complete)
+        return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        img.onload = () => resolve()
+      });
+    }
+
+    async function loadImage(url) {
+      const image = new Image();
+      image.src = url;
+      await waitTillLoaded(image);
+      return image;
+    }
+
+    async function generateBitmaps(width, height, count) {
+      let img = await loadImage("chrome_logo.png");
+      let bitmaps = [];
+
+      let cnv = document.createElement("canvas");
+      cnv.height = height;
+      cnv.width = width;
+      var ctx = cnv.getContext('2d');
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, width, height);
+
+      let cx = width / 2;
+      let cy = height / 2;
+      let r = Math.min(width, height) / 5;
+
+      for (let i = 0; i < count; i++) {
+        let angle = Math.PI * 2 * (i / count);
+        let x = r;
+        let y = 0;
+        let size = r;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+
+        ctx.drawImage(img, x, y, size, size);
+        let bitmap = await createImageBitmap(cnv);
+        ctx.fillRect(x, y, size, size);
+
+        bitmaps.push(bitmap);
+      }
+
+      return bitmaps;
+    }
+
+    async function createFrames(width, height, fps, time_s) {
+      let count = fps * time_s;
+      let bitmaps = await generateBitmaps(width, height, count);
+      let frames = [];
+      for (let i = 0; i < count; i++) {
+        let bitmap = bitmaps[i];
+        let ts = 1_000_000 * time_s * (i / count);
+        let frame = new VideoFrame(bitmap, { timestamp: ts });
+        frames.push(frame);
+      }
+
+      return frames;
+    }
+
+    function delay(time_ms) {
+      return new Promise((resolve, reject) => {
+        setTimeout(resolve, time_ms);
+      });
+    };
+
+    async function frameToBitmapInTime(frame, timeout_ms) {
+      let options = { colorSpaceConversion: "none" };
+      let convertPromise = frame.createImageBitmap(options);
+
+      if (timeout_ms <= 0)
+        return convertPromise;
+
+      let results = await Promise.all([convertPromise, delay(timeout_ms)]);
+      return results[0];
+    }
+
+    async function encodeFrames(frames, fps, codec) {
+      let chunks = [];
+      const init = {
+        output: (chunk) => {
+          chunks.push(chunk);
+        },
+        error: (e) => {
+          console.log(e.message);
+        }
+      };
+
+      const config = {
+        codec: codec,
+        width: frames[0].codedWidth,
+        height: frames[0].codedHeight,
+        bitrate: 10e6,
+        framerate: fps,
+      };
+
+      let encoder = new VideoEncoder(init);
+      encoder.configure(config);
+      for (let i = 0; i < frames.length; i++) {
+        encoder.encode(frames[i], { keyFrame: false });
+      }
+      await encoder.flush();
+      encoder.close();
+      return chunks;
+    }
+
+    async function decodeFrames(chunks, codec) {
+      let frames = [];
+      const init = {
+        output: (frame) => {
+          frames.push(frame)
+        },
+        error: (e) => {
+          console.log(e.message);
+        }
+      };
+
+      const config = {
+        codec: codec,
+      };
+
+      let decoder = new VideoDecoder(init);
+      decoder.configure(config);
+
+      for (let i = 0; i < chunks.length; i++) {
+        decoder.decode(chunks[i]);
+      }
+      await decoder.flush();
+      decoder.close();
+      return frames;
+    }
+
+    function getCurrentTimestamp() {
+      return (new Date()).getTime();
+    }
+
+    async function draw() {
+      let c = document.createElement("canvas");
+      c.width = 640;
+      c.height = 480;
+      c.style = "padding: 10px; background: gold;";
+      document.body.append(c);
+      let ctx = c.getContext("2d");
+      ctx.font = '30px fantasy';
+      ctx.fillText("Encoding...", 5, 40);
+
+      let time_s = 3; // 3 seconds
+      let fps = 60;
+      let frames = await createFrames(c.width, c.height, fps, time_s);
+
+      let codec = "vp8"; // "vp09.00.10.08";
+      let chunks = await encodeFrames(frames, fps, codec);
+      frames = await decodeFrames(chunks, codec);
+
+      //while (true)
+      {
+        let time_base_ms = getCurrentTimestamp();
+        for (let i = 0; i < frames.length; i++) {
+          let frame = frames[i];
+          let frame_time_ms = frame.timestamp / 1000;
+          let current_media_time = getCurrentTimestamp() - time_base_ms;
+          let wait_time_ms = frame_time_ms - current_media_time;
+
+          let image = await frameToBitmapInTime(frame, wait_time_ms);
+          ctx.drawImage(image, 0, 0);
+        }
+      }
+    }
+
+    window.onload = () => { draw(); };
+  </script>
+
+</body>
+
+</html>
