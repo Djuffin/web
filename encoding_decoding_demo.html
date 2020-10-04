@@ -132,13 +132,20 @@
 
       const config = {
         codec: codec,
+        codedWidth: 640,
+        codedHeight: 480
       };
 
       let decoder = new VideoDecoder(init);
       decoder.configure(config);
 
       for (let i = 0; i < chunks.length; i++) {
-        decoder.decode(chunks[i]);
+        let chunk = chunks[i];
+        let newChunk = new EncodedVideoChunk({
+          timestamp: 2 * chunk.timestamp,
+          data: chunk.data
+        });
+        decoder.decode(newChunk);
       }
       await decoder.flush();
       decoder.close();
@@ -159,7 +166,7 @@
       ctx.font = '30px fantasy';
       ctx.fillText("Encoding...", 5, 40);
 
-      let time_s = 3; // 3 seconds
+      let time_s = 4; // 3 seconds
       let fps = 60;
       let frames = await createFrames(c.width, c.height, fps, time_s);
 

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>WebCodecs API demo: Encoding and Decoding</title>
+  <style>
+    canvas {
+      padding: 10px;
+      background: gold;
+    }
+
+    button {
+      background-color: #555555;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      width: 150px;
+      text-align: center;
+      display: block;
+      font-size: 16px;
+    }
+
+  </style>
+</head>
+
+<body>
+  <canvas id="src" width="640" height="480"></canvas>
+  <button onclick="playPause()">Pause</button>
+  <canvas id="dst" width="640" height="480"></canvas>
+  <script>
+    let codec_string = "vp8";
+    let keep_going = true;
+
+    function playPause() {
+      keep_going = !keep_going;
+      let btn = document.querySelector("button");
+      if (keep_going) {
+        startDrawing();
+        btn.innerText = "Pause";
+      } else {
+        btn.innerText = "Play";
+      }
+    }
+
+    async function waitTillLoaded(img) {
+      if (img.complete)
+        return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        img.onload = () => resolve()
+      });
+    }
+
+    function delay(time_ms) {
+      return new Promise((resolve) => {
+        setTimeout(resolve, time_ms);
+      });
+    }
+
+    async function loadImage(url) {
+      const image = new Image();
+      image.src = url;
+      await waitTillLoaded(image);
+      return image;
+    }
+
+    async function startDrawing() {
+      let img = await loadImage("chrome_logo.png");
+      let cnv = document.getElementById("src");
+      var ctx = cnv.getContext('2d', { alpha: false });
+
+      ctx.fillStyle = "white";
+      let width = cnv.width;
+      let height = cnv.height;
+      let cx = width / 2;
+      let cy = height / 2;
+      let r = Math.min(width, height) / 5;
+      let drawOneFrame = function (time) {
+        let angle = Math.PI * 2 * (time / 5000);
+        let scale = 1 + 0.3 * Math.sin(Math.PI * 2 * (time / 7000));
+        ctx.save();
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.scale(scale, scale);
+
+        ctx.font = '30px Verdana';
+        ctx.fillStyle = 'black';
+        const text = "😊📹📷  Hello WebCodecs 🎥🎞️😊";
+        const size = ctx.measureText(text).width;
+        ctx.fillText(text, -size / 2, 0);
+        ctx.restore();
+        if (keep_going)
+          window.requestAnimationFrame(drawOneFrame);
+      }
+      window.requestAnimationFrame(drawOneFrame);
+    }
+
+    function captureAndEncode(processChunk) {
+      let cnv = document.getElementById("src");
+      let fps = 30;
+      let pending_outputs = 0;
+      let frame_counter = 0;
+      let stream = cnv.captureStream(fps);
+      let video = document.querySelector("video");
+
+      let constraints = {
+        audio: false ,
+        video: { width: 1280, height: 720 }
+      };
+
+      let vtr = new VideoTrackReader(stream.getVideoTracks()[0]);
+
+      const init = {
+        output: (chunk) => {
+          processChunk(chunk);
+          pending_outputs--;
+        },
+        error: (e) => {
+          console.log(e.message);
+          vtr.stop();
+        }
+      };
+
+      const config = {
+        codec: codec_string,
+        width: cnv.width,
+        height: cnv.height,
+        bitrate: 10e6,
+        framerate: fps,
+      };
+
+      let encoder = new VideoEncoder(init);
+      encoder.configure(config);
+
+      vtr.start((frame) => {
+        if (pending_outputs > 30) {
+          // To many frames in flight, encoder is overwhelmed
+          // let's drop this frame.
+          return;
+        }
+        frame_counter++;
+        pending_outputs++;
+        const insert_keyframe = (frame_counter % 150) == 0;
+        encoder.encode(frame, { keyFrame: insert_keyframe });
+      });
+    }
+
+    async function frameToBitmapInTime(frame, timeout_ms) {
+      let options = { colorSpaceConversion: "none" };
+      let convertPromise = frame.createImageBitmap(options);
+
+      if (timeout_ms <= 0)
+        return convertPromise;
+
+      let results = await Promise.all([convertPromise, delay(timeout_ms)]);
+      return results[0];
+    }
+
+    function startDecodingAndRendering() {
+      let cnv = document.getElementById("dst");
+      let ctx = cnv.getContext("2d", { alpha: false });
+      let ready_frames = [];
+      let underflow = true;
+      let time_base = 0;
+
+      function calculateTimeTillNextFrame(timestamp) {
+        if (time_base == 0)
+          time_base = performance.now();
+        let media_time = performance.now() - time_base;
+        return Math.max(0, (timestamp / 1000) - media_time);
+      }
+
+      async function render_frame() {
+        if (ready_frames.length == 0) {
+          underflow = true;
+          return;
+        }
+        let frame = ready_frames.shift();
+        underflow = false;
+
+        let bitmap = await frame.createImageBitmap({ colorSpaceConversion: "none" });
+        // Based on the frame's timestamp calculate how much of real time waiting
+        // is needed before showing the next frame.
+        let time_till_next_frame = calculateTimeTillNextFrame(frame.timestamp);
+        await delay(time_till_next_frame);
+
+        ctx.drawImage(bitmap, 0, 0);
+        console.log(time_till_next_frame, ready_frames.length);
+
+        // Immediately schedule rendering of the next frame
+        setTimeout(render_frame, 0);
+      }
+
+      function handleFrame(frame) {
+        ready_frames.push(frame);
+        if (underflow)
+          setTimeout(render_frame, 0);
+      }
+
+      const init = {
+        output: handleFrame,
+        error: (e) => {
+          console.log(e.message);
+        }
+      };
+
+      const config = {
+        codec: codec_string,
+        codedWidth: cnv.width,
+        codedHeight: cnv.height
+      };
+
+      let decoder = new VideoDecoder(init);
+      decoder.configure(config);
+      return decoder;
+    }
+
+    function main() {
+      startDrawing();
+      let decoder = startDecodingAndRendering();
+      captureAndEncode((chunk) => {
+        decoder.decode(chunk);
+      });
+    }
+
+    document.body.onload = main;
+  </script>
+
+</body>
+
+</html>
