@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="origin-trial" content="AoE0ZWPpK3gc2xD6eRNBuCUOvH1Y6RvVYvNClbROr/zJDKZi8jqIOKdt7Ve6P6Ur0gcJ8fRrq0k9Mofj/uqjSQEAAABgeyJvcmlnaW4iOiJodHRwczovL2dsaXRjaC5jb206NDQzIiwiZmVhdHVyZSI6IldlYkNvZGVjcyIsImV4cGlyeSI6MTYwNTE3NTc3MywiaXNTdWJkb21haW4iOnRydWV9">
+  <meta http-equiv="origin-trial" content="AoSY6Q4OOuuZVXTqOwJlfk4n77EL0esumtLRHj+9V97JoFfLq4AKsWlza8A8HmxTx1PU7SSzpjWK6F62bwWLPQYAAAB3eyJvcmlnaW4iOiJodHRwczovL3dlYmNvZGVjcy1ibG9ncG9zdC1kZW1vLmdsaXRjaC5tZTo0NDMiLCJmZWF0dXJlIjoiV2ViQ29kZWNzIiwiZXhwaXJ5IjoxNjA1NDc0OTQ4LCJpc1N1YmRvbWFpbiI6dHJ1ZX0=">
   <title>WebCodecs API demo: Encoding and Decoding</title>
   <style>
     canvas {
@@ -36,7 +36,6 @@
       keep_going = !keep_going;
       let btn = document.querySelector("button");
       if (keep_going) {
-        startDrawing();
         btn.innerText = "Pause";
       } else {
         btn.innerText = "Play";
@@ -75,8 +74,7 @@
         const size = ctx.measureText(text).width;
         ctx.fillText(text, -size / 2, 0);
         ctx.restore();
-        if (keep_going)
-          window.requestAnimationFrame(drawOneFrame);
+        window.requestAnimationFrame(drawOneFrame);
       }
       window.requestAnimationFrame(drawOneFrame);
     }
@@ -87,19 +85,12 @@
       let pending_outputs = 0;
       let frame_counter = 0;
       let stream = cnv.captureStream(fps);
-      let video = document.querySelector("video");
-
-      let constraints = {
-        audio: false,
-        video: { width: 1280, height: 720 }
-      };
-
       let vtr = new VideoTrackReader(stream.getVideoTracks()[0]);
 
       const init = {
         output: (chunk) => {
-          processChunk(chunk);
           pending_outputs--;
+          processChunk(chunk);
         },
         error: (e) => {
           console.log(e.message);
@@ -119,6 +110,8 @@
       encoder.configure(config);
 
       vtr.start((frame) => {
+        if (!keep_going)
+          return;
         if (pending_outputs > 30) {
           // To many frames in flight, encoder is overwhelmed
           // let's drop this frame.
@@ -169,7 +162,6 @@
         // is needed before showing the next frame.
         let time_till_next_frame = calculateTimeTillNextFrame(frame.timestamp);
         await delay(time_till_next_frame);
-
         ctx.drawImage(bitmap, 0, 0);
 
         // Immediately schedule rendering of the next frame
@@ -201,6 +193,10 @@
     }
 
     function main() {
+      if (!("VideoEncoder" in window)) {
+        alert("WebCodecs API is not supported.");
+        return;
+      }
       startDrawing();
       let decoder = startDecodingAndRendering();
       captureAndEncode((chunk) => {
