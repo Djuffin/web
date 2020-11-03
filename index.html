@@ -17,13 +17,10 @@
         }
 
         #size {
-            background-color: yellow;
-            border: none;
+            background-color: white;
             color: black;
-            padding: 15px 32px;
-            width: 150px;
-            text-align: center;
-            display: block;
+            width: 300px;
+            padding: 15px;
             font-size: 16px;
         }
     </style>
@@ -33,7 +30,7 @@
     <div id="fs">
         <button onclick="switchFullscreen()">Enter fullscreen</button>
         <div id="size"></div>
-        <img src="chrome_logo.png" />
+        <img src="https://upload.wikimedia.org/wikipedia/commons/9/97/The_Earth_seen_from_Apollo_17.jpg" width="300px" height="300px" />
     </div>
     <script>
 
@@ -53,7 +50,11 @@
             let w = window.outerWidth;
             let h = window.outerHeight;
             let size_div = document.querySelector("#size");
-            size_div.innerText = `Win width:${w} height:${h}`;
+            if (size_div.resize_count)
+                size_div.resize_count++;
+            else
+                size_div.resize_count = 1;
+            size_div.innerText = `width:${w} height:${h} count:${size_div.resize_count}`;
         }
 
         document.body.onload = () => {
