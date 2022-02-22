@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>WebGPU Demo</title>
+          <style>
+            canvas {
+              padding: 10px;
+              background: gold;
+            }
+          </style>
+    </head>
+    <body>
+        <canvas id="screen" width="800" height="600"></canvas>
+        <script>
+            async function main() {
+              const cnv = document.getElementById("screen");
+              const adapter = await navigator.gpu.requestAdapter();
+              const device = await adapter.requestDevice();
+              const ctx = cnv.getContext('webgpu');
+              const presentationFormat = ctx.getPreferredFormat(adapter);
+              const shaderCode = document.getElementById("shaders").text;
+
+              ctx.configure({
+                device,
+                format: presentationFormat
+              });
+              const pipeline = device.createRenderPipeline({
+                vertex: {
+                  module: device.createShaderModule({
+                    code: shaderCode,
+                  }),
+                  entryPoint: 'mainVertex',
+                },
+                fragment: {
+                  module: device.createShaderModule({
+                    code: shaderCode,
+                  }),
+                  entryPoint: 'mainFragment',
+                  targets: [
+                    {
+                      format: presentationFormat,
+                    },
+                  ],
+                },
+                primitive: {
+                  topology: 'triangle-list',
+                },
+              });
+
+              function nextFrame() {
+                const commandEncoder = device.createCommandEncoder();
+                const textureView = ctx.getCurrentTexture().createView();
+
+                const renderPassDescriptor = {
+                  colorAttachments: [
+                    {
+                      view: textureView,
+                      clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                    },
+                  ],
+                };
+
+                const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+                passEncoder.setPipeline(pipeline);
+                passEncoder.draw(3, 1, 0, 0);
+                passEncoder.end();
+
+                device.queue.submit([commandEncoder.finish()]);
+                requestAnimationFrame(nextFrame);
+              }
+              nextFrame();
+            }
+
+            window.onload = main;
+        </script>
+        <script id="shaders" type="wgsl">
+          @stage(vertex)
+          fn mainVertex(@builtin(vertex_index) VertexIndex : u32)
+               -> @builtin(position) vec4<f32> {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(0.0, 0.5),
+                vec2<f32>(-0.5, -0.5),
+                vec2<f32>(0.5, -0.5));
+
+            return vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+          }
+
+          @stage(fragment)
+          fn mainFragment() -> @location(0) vec4<f32> {
+            return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+          }
+        </script>
+
+    </body>
+</html>
