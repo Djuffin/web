@@ -1,106 +1,68 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Chromium test website</title>
-    </head>
-    <body>
-        <script>
-            function openme() {
-                window.open(window.location.href, '_blank');
-            }
-        </script>
-        <style>
-            button {
-                width: 200px;
-                height: 100px;
-            }
-        </style>
-        <div>
-            <button type="button" onclick="openme();">Open a new tab!</button>
-        </div>
-        <table>
-            <tr>
-                <td>
-                    <h2>
-                        I am a Legend!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="legend.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-                <td>
-                    <h2>
-                        I am Big Buck Bunny!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="mov_bbb.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <h2>
-                        I am Big Buck Bunny!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="mov_bbb.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-                <td>
-                    <h2>
-                        I am a Legend!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="legend.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <h2>
-                        I am a Legend!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="legend.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-                <td>
-                    <h2>
-                        I am Big Buck Bunny!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="mov_bbb.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <h2>
-                        I am Big Buck Bunny!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="mov_bbb.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-                <td>
-                    <h2>
-                        I am a Legend!
-                    </h2>
-                    <video  width="640" height="300" controls autoplay loop muted>
-                        <source src="legend.mp4" type="video/mp4">
-                        Video is not supported!
-                    </video>
-                </td>
-            </tr>
-        </table>
 
-    </body>
+<head>
+    <meta charset="UTF-8">
+    <title>Chromium test website</title>
+    <style>
+        button {
+            background-color: #555555;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            width: 150px;
+            text-align: center;
+            display: block;
+            font-size: 16px;
+        }
+
+        #size {
+            background-color: white;
+            color: black;
+            width: 300px;
+            padding: 15px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fs">
+        <button onclick="switchFullscreen()">Enter fullscreen</button>
+        <div id="size"></div>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/9/97/The_Earth_seen_from_Apollo_17.jpg" width="300px" height="300px" />
+    </div>
+    <script>
+
+        function switchFullscreen() {
+            let btn = document.querySelector("button");
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+                btn.innerText = "Enter fullscreen";
+            } else {
+                let fs = document.querySelector("#fs");
+                fs.requestFullscreen();
+                btn.innerText = "Exit fullscreen";
+            }
+        }
+
+        function onresize() {
+            let w = window.outerWidth;
+            let h = window.outerHeight;
+            let size_div = document.querySelector("#size");
+            if (size_div.resize_count)
+                size_div.resize_count++;
+            else
+                size_div.resize_count = 1;
+            size_div.innerText = `width:${w} height:${h} count:${size_div.resize_count}`;
+        }
+
+        document.body.onload = () => {
+            window.addEventListener("resize", onresize);
+            onresize();
+        };
+    </script>
+
+</body>
+
 </html>
