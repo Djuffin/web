@@ -11,7 +11,7 @@
           </style>
     </head>
     <body>
-        <canvas id="screen" width="800" height="600"></canvas>
+        <canvas id="screen" width="800" height="800"></canvas>
         <script>
             async function main() {
               const cnv = document.getElementById("screen");
@@ -31,6 +31,20 @@
                     code: shaderCode,
                   }),
                   entryPoint: 'mainVertex',
+                  buffers: [
+                    {
+                      arrayStride: 3 * 4,
+                      stepMode: "vertex",
+                      attributes: [
+                        {
+                          // position
+                          shaderLocation: 0,
+                          offset: 0,
+                          format: 'float32x3',
+                        },
+                      ],
+                    },
+                  ],
                 },
                 fragment: {
                   module: device.createShaderModule({
@@ -45,10 +59,16 @@
                 },
                 primitive: {
                   topology: 'triangle-list',
+                  frontFace: "ccw"
                 },
               });
 
-              function nextFrame() {
+
+              let vertices = new Float32Array([
+                                               0.0,0.0,0.0,  -1.0,0.0,0.0,  -1.0,-1.0,0.0,
+                                               0.0,0.0,0.0,   0.0,1.0,0.0,  1.0,1.0,0.0, ]);
+
+              async function nextFrame() {
                 const commandEncoder = device.createCommandEncoder();
                 const textureView = ctx.getCurrentTexture().createView();
 
@@ -56,20 +76,40 @@
                   colorAttachments: [
                     {
                       view: textureView,
-                      clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                      clearValue: { r: 0.3, g: 0.3, b: 0.3, a: 1.0 },
                       loadOp: 'clear',
                       storeOp: 'store',
                     },
                   ],
                 };
 
+                for  (let i = 0; i < vertices.length; i += 3) {
+                  vertices[i] += 0.02;
+                  if (vertices[i] > 2.0)
+                    vertices[i] = -2.0;
+                  vertices[i + 1] += 0.02;
+                  if (vertices[i + 1] > 2.0)
+                    vertices[i + 1] = -2.0;
+                }
+
+                const verticesBuffer = device.createBuffer({
+                  size: vertices.byteLength,
+                  usage: GPUBufferUsage.VERTEX,
+                  mappedAtCreation: true,
+                });
+                new Float32Array(verticesBuffer.getMappedRange()).set(vertices);
+                verticesBuffer.unmap();
+
+
                 const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
                 passEncoder.setPipeline(pipeline);
-                passEncoder.draw(3, 1, 0, 0);
+                passEncoder.setVertexBuffer(0, verticesBuffer);
+                passEncoder.draw(6, 1, 0, 0);
                 passEncoder.end();
 
                 device.queue.submit([commandEncoder.finish()]);
                 requestAnimationFrame(nextFrame);
+                verticesBuffer.destroy();
               }
               nextFrame();
             }
@@ -78,19 +118,23 @@
         </script>
         <script id="shaders" type="wgsl">
           @stage(vertex)
-          fn mainVertex(@builtin(vertex_index) VertexIndex : u32)
+          fn mainVertex(@location(0) position : vec3<f32>,
+                        @builtin(vertex_index) vertexIndex : u32,
+                        @builtin(instance_index) instanceIndex : u32)
                -> @builtin(position) vec4<f32> {
-            var pos = array<vec2<f32>, 3>(
-                vec2<f32>(0.0, 0.5),
-                vec2<f32>(-0.5, -0.5),
-                vec2<f32>(0.5, -0.5));
 
-            return vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+            let scale = vec3<f32>(0.5, 0.5, 0.5);
+            return vec4<f32>(position * scale, 1.0);
           }
 
           @stage(fragment)
-          fn mainFragment() -> @location(0) vec4<f32> {
-            return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+          fn mainFragment(@builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
+            if (is_front) {
+              return vec4<f32>(0.8, 0.0, 0.0, 1.0);
+            } else {
+              return vec4<f32>(0.0, 0.8, 0.0, 1.0);
+            }
+
           }
         </script>
 
