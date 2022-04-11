@@ -14,6 +14,7 @@
         <canvas id="screen" width="800" height="800"></canvas>
         <script src="./gl-matrix.js"></script>
         <script src="./obj-parser.js"></script>
+        <script src="./model.js"></script>
         <script >
             const glMatrix = globalThis.glMatrix;
             const mat2 = glMatrix.mat2;
@@ -27,10 +28,10 @@
             const vec4 = glMatrix.vec4;
 
             async function read3dObject() {
-              let objHref = 'https://webglfundamentals.org/webgl/resources/models/cube/cube.obj';
-              //objHref = 'https://webglfundamentals.org/webgl/resources/models/book-vertex-chameleon-study/book.obj';
-              const response = await fetch(objHref);
-              const text = await response.text();
+              //let objHref = 'https://webglfundamentals.org/webgl/resources/models/cube/cube.obj';
+              //const response = await fetch(objHref);
+              //let text = await response.text();
+              let text = ModelObj;
               let object = parseOBJ(text);
               return object;
             }
@@ -61,37 +62,6 @@
               return result;
             }
 
-            function makeCircle2(segments, r) {
-              let result = new Float32Array(segments * (3 + 3 + 3));
-              const step = 2 * Math.PI / segments;
-              let angle = 0.0;
-              let index = 0;
-              for (let i = 0; i < segments; i++) {
-                  let x = 0.0;
-                  let y = 0.0;
-                  let z = 1.0;
-                  result[index++] = x;
-                  result[index++] = y;
-                  result[index++] = z;
-
-                  x = Math.cos(angle) * r;
-                  y = Math.sin(angle) * r;
-                  z = 0;
-                  result[index++] = x;
-                  result[index++] = y;
-                  result[index++] = z;
-
-                  x = Math.cos(angle + step) * r;
-                  y = Math.sin(angle + step) * r;
-                  result[index++] = x;
-                  result[index++] = y;
-                  result[index++] = z;
-
-                  angle += step;
-              }
-              return result;
-            }
-
             function getTransformationMatrix() {
               const aspect = 1.0;
               const projectionMatrix = mat4.create();
@@ -112,6 +82,10 @@
               return modelViewProjectionMatrix;
             }
 
+            function getText(id) {
+              return document.getElementById(id).text;
+            }
+
             async function main() {
 
               const cnv = document.getElementById("screen");
@@ -119,7 +93,7 @@
               const device = await adapter.requestDevice();
               const ctx = cnv.getContext('webgpu');
               const presentationFormat = ctx.getPreferredFormat(adapter);
-              const shaderCode = document.getElementById("shaders").text;
+              const shaderCode = getText("shaders");
 
               ctx.configure({
                 device,
@@ -163,6 +137,18 @@
                   frontFace: "ccw",
                   cullMode: "back"
                 },
+                depthStencil: {
+                  depthWriteEnabled: true,
+                  depthCompare: 'less',
+                  format: 'depth24plus-stencil8',
+                },
+              });
+
+
+              const depthTexture = device.createTexture({
+                size: [cnv.width, cnv.height],
+                format: 'depth24plus-stencil8',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT,
               });
 
 
@@ -216,6 +202,16 @@
                       storeOp: 'store',
                     },
                   ],
+                  depthStencilAttachment: {
+                    view: depthTexture.createView(),
+
+                    depthClearValue: 1.0,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store',
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store',
+                  },
                 };
 
                 let transformationMatrix = getTransformationMatrix();
@@ -256,26 +252,34 @@
           };
           @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
+          struct VertexOutput {
+            @builtin(position) position : vec4<f32>,
+            @location(0) color: vec4<f32>
+          };
+
           @stage(vertex)
           fn mainVertex(@location(0) position : vec3<f32>,
-                        @builtin(vertex_index) vertexIndex : u32,
-                        @builtin(instance_index) instanceIndex : u32)
-               -> @builtin(position) vec4<f32> {
+                        @builtin(vertex_index) vertex_index : u32)
+               -> VertexOutput {
 
+            var colors = array<vec4<f32>, 6>(vec4<f32>(1.0, 0.0, 0.0, 1.0),
+                                             vec4<f32>(0.0, 1.0, 0.0, 1.0),
+                                             vec4<f32>(0.0, 0.0, 1.0, 1.0),
+                                             vec4<f32>(0.0, 1.0, 1.0, 1.0),
+                                             vec4<f32>(1.0, 0.0, 1.0, 1.0),
+                                             vec4<f32>(1.0, 1.0, 0.0, 1.0));
+            var result : VertexOutput;
             let p = vec4<f32>(position, 1.0);
-            return uniforms.modelViewProjectionMatrix * p;
+            result.position = uniforms.modelViewProjectionMatrix * p;
+            result.color = colors[vertex_index % 6u];
+            return result;
           }
 
           @stage(fragment)
-          fn mainFragment(@builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
-            if (is_front) {
-              return vec4<f32>(0.8, 0.0, 0.0, 1.0);
-            } else {
-              return vec4<f32>(0.0, 0.8, 0.0, 1.0);
-            }
-
+          fn mainFragment(@location(0) color : vec4<f32>, @builtin(position) position : vec4<f32>) -> @location(0) vec4<f32> {
+            let c = max(max(color[0], color[1]), color[2]);
+            return vec4<f32>(color[0] * c, color[1] * c, color[2] * c, 1.0);
           }
         </script>
-
     </body>
 </html>
