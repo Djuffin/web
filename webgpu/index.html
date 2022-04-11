@@ -12,8 +12,108 @@
     </head>
     <body>
         <canvas id="screen" width="800" height="800"></canvas>
-        <script>
+        <script src="./gl-matrix.js"></script>
+        <script src="./obj-parser.js"></script>
+        <script >
+            const glMatrix = globalThis.glMatrix;
+            const mat2 = glMatrix.mat2;
+            const mat2d = glMatrix.mat2d;
+            const mat3 = glMatrix.mat3;
+            const mat4 = glMatrix.mat4;
+            const quat = glMatrix.quat;
+            const quat2 = glMatrix.quat2;
+            const vec2 = glMatrix.vec2;
+            const vec3 = glMatrix.vec3;
+            const vec4 = glMatrix.vec4;
+
+            async function read3dObject() {
+              let objHref = 'https://webglfundamentals.org/webgl/resources/models/cube/cube.obj';
+              //objHref = 'https://webglfundamentals.org/webgl/resources/models/book-vertex-chameleon-study/book.obj';
+              const response = await fetch(objHref);
+              const text = await response.text();
+              let object = parseOBJ(text);
+              return object;
+            }
+
+            function conertPointsToVertexArray(points) {
+              let result = new Float32Array(points.length * 3);
+              let index = 0;
+              for (let point of points) {
+                result[index++] = point.x;
+                result[index++] = point.y;
+                result[index++] = point.z;
+              }
+              return result;
+            }
+
+            function conertTriagnlesToIndexArray(triangles) {
+              let size = triangles.length * 3;
+              // For mapping all array buffers should have size which is a multiple of 4
+              if (size % 4 !== 0)
+                size += (4 - size % 4);
+              let result = new Uint16Array(size);
+              let index = 0;
+              for (let triangle of triangles) {
+                result[index++] = triangle[0];
+                result[index++] = triangle[1];
+                result[index++] = triangle[2];
+              }
+              return result;
+            }
+
+            function makeCircle2(segments, r) {
+              let result = new Float32Array(segments * (3 + 3 + 3));
+              const step = 2 * Math.PI / segments;
+              let angle = 0.0;
+              let index = 0;
+              for (let i = 0; i < segments; i++) {
+                  let x = 0.0;
+                  let y = 0.0;
+                  let z = 1.0;
+                  result[index++] = x;
+                  result[index++] = y;
+                  result[index++] = z;
+
+                  x = Math.cos(angle) * r;
+                  y = Math.sin(angle) * r;
+                  z = 0;
+                  result[index++] = x;
+                  result[index++] = y;
+                  result[index++] = z;
+
+                  x = Math.cos(angle + step) * r;
+                  y = Math.sin(angle + step) * r;
+                  result[index++] = x;
+                  result[index++] = y;
+                  result[index++] = z;
+
+                  angle += step;
+              }
+              return result;
+            }
+
+            function getTransformationMatrix() {
+              const aspect = 1.0;
+              const projectionMatrix = mat4.create();
+              mat4.perspective(projectionMatrix, (2 * Math.PI) / 7, aspect, 1.0, 100.0);
+              const viewMatrix = mat4.create();
+              mat4.translate(viewMatrix, viewMatrix, glMatrix.vec3.fromValues(0, 0, -4));
+              const now = Date.now() / 1000;
+              mat4.rotate(
+                viewMatrix,
+                viewMatrix,
+                1,
+                vec3.fromValues(Math.sin(now), Math.cos(now), 0)
+              );
+
+              const modelViewProjectionMatrix = mat4.create();
+              mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
+
+              return modelViewProjectionMatrix;
+            }
+
             async function main() {
+
               const cnv = document.getElementById("screen");
               const adapter = await navigator.gpu.requestAdapter();
               const device = await adapter.requestDevice();
@@ -25,6 +125,7 @@
                 device,
                 format: presentationFormat
               });
+
               const pipeline = device.createRenderPipeline({
                 vertex: {
                   module: device.createShaderModule({
@@ -59,14 +160,48 @@
                 },
                 primitive: {
                   topology: 'triangle-list',
-                  frontFace: "ccw"
+                  frontFace: "ccw",
+                  cullMode: "back"
                 },
               });
 
 
-              let vertices = new Float32Array([
-                                               0.0,0.0,0.0,  -1.0,0.0,0.0,  -1.0,-1.0,0.0,
-                                               0.0,0.0,0.0,   0.0,1.0,0.0,  1.0,1.0,0.0, ]);
+              const uniformBuffer = device.createBuffer({
+                size: 16 * 4, // 4 by 4 float32 matxix
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+              });
+
+              const uniformBindGroup = device.createBindGroup({
+                layout: pipeline.getBindGroupLayout(0),
+                entries: [
+                  {
+                    binding: 0,
+                    resource: {
+                      buffer: uniformBuffer,
+                    },
+                  },
+                ],
+              });
+
+              let object = await read3dObject();
+              let vertices = conertPointsToVertexArray(object.verteces);
+              let indeces = conertTriagnlesToIndexArray(object.triangles);
+
+              const verticesBuffer = device.createBuffer({
+                size: vertices.byteLength,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true,
+              });
+              new Float32Array(verticesBuffer.getMappedRange()).set(vertices);
+              verticesBuffer.unmap();
+
+              const indexBuffer = device.createBuffer({
+                size: indeces.byteLength,
+                usage: GPUBufferUsage.INDEX,
+                mappedAtCreation: true,
+              });
+              new Uint16Array(indexBuffer.getMappedRange()).set(indeces);
+              indexBuffer.unmap();
 
               async function nextFrame() {
                 const commandEncoder = device.createCommandEncoder();
@@ -83,48 +218,52 @@
                   ],
                 };
 
-                for  (let i = 0; i < vertices.length; i += 3) {
-                  vertices[i] += 0.02;
-                  if (vertices[i] > 2.0)
-                    vertices[i] = -2.0;
-                  vertices[i + 1] += 0.02;
-                  if (vertices[i + 1] > 2.0)
-                    vertices[i + 1] = -2.0;
-                }
-
-                const verticesBuffer = device.createBuffer({
-                  size: vertices.byteLength,
-                  usage: GPUBufferUsage.VERTEX,
-                  mappedAtCreation: true,
-                });
-                new Float32Array(verticesBuffer.getMappedRange()).set(vertices);
-                verticesBuffer.unmap();
-
+                let transformationMatrix = getTransformationMatrix();
+                device.queue.writeBuffer(
+                  uniformBuffer,
+                  0,
+                  transformationMatrix.buffer,
+                  transformationMatrix.byteOffset,
+                  transformationMatrix.byteLength
+                );
 
                 const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
                 passEncoder.setPipeline(pipeline);
+                passEncoder.setBindGroup(0, uniformBindGroup);
                 passEncoder.setVertexBuffer(0, verticesBuffer);
-                passEncoder.draw(6, 1, 0, 0);
+                passEncoder.setIndexBuffer(indexBuffer, 'uint16');
+                passEncoder.drawIndexed(indeces.length);
                 passEncoder.end();
 
                 device.queue.submit([commandEncoder.finish()]);
                 requestAnimationFrame(nextFrame);
-                verticesBuffer.destroy();
               }
               nextFrame();
             }
 
-            window.onload = main;
+            window.onload = async function () {
+              try {
+                await main();
+              }
+              catch (e) {
+                console.log("ERROR in main(): " + e);
+              }
+            };
         </script>
         <script id="shaders" type="wgsl">
+          struct Uniforms {
+            modelViewProjectionMatrix : mat4x4<f32>,
+          };
+          @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
           @stage(vertex)
           fn mainVertex(@location(0) position : vec3<f32>,
                         @builtin(vertex_index) vertexIndex : u32,
                         @builtin(instance_index) instanceIndex : u32)
                -> @builtin(position) vec4<f32> {
 
-            let scale = vec3<f32>(0.5, 0.5, 0.5);
-            return vec4<f32>(position * scale, 1.0);
+            let p = vec4<f32>(position, 1.0);
+            return uniforms.modelViewProjectionMatrix * p;
           }
 
           @stage(fragment)
