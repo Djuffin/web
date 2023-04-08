@@ -3,66 +3,129 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Chromium test website</title>
+    <title>Face blur</title>
     <style>
         button {
-            background-color: #555555;
-            border: none;
-            color: white;
-            padding: 15px 32px;
+            border: solid;
+            margin: 15px 32px;
             width: 150px;
             text-align: center;
             display: block;
             font-size: 16px;
         }
 
-        #size {
-            background-color: white;
-            color: black;
-            width: 300px;
-            padding: 15px;
-            font-size: 16px;
+        #screen {
+            border: solid;
+            position: relative;
         }
+
+        #screen
+
+
     </style>
-</head>
+    <!-- Import @tensorflow/tfjs or @tensorflow/tfjs-core -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"> </script>
 
-<body>
-    <div id="fs">
-        <button onclick="switchFullscreen()">Enter fullscreen</button>
-        <div id="size"></div>
-        <img src="https://upload.wikimedia.org/wikipedia/commons/9/97/The_Earth_seen_from_Apollo_17.jpg" width="300px" height="300px" />
-    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu/dist/tf-backend-webgpu.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm/dist/tf-backend-wasm.js"></script>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
     <script>
+        async function init() {
+            let backend = document.getElementById('backend').value;
+            await tf.setBackend(backend);
+        }
 
-        function switchFullscreen() {
-            let btn = document.querySelector("button");
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-                btn.innerText = "Enter fullscreen";
-            } else {
-                let fs = document.querySelector("#fs");
-                fs.requestFullscreen();
-                btn.innerText = "Exit fullscreen";
+        function makeFpsCounter() {
+            let label = document.createElement('pre');
+            document.body.appendChild(label);
+            let second = 0;
+            let fps = 0;
+            return function() {
+                let now = performance.now();
+                let current_second = Math.floor(now / 1000);
+                if (current_second != second) {
+                    label.innerText = `FPS: ${fps / (current_second - second)}`;
+                    fps = 0;
+                    second = current_second;
+                } else {
+                    fps++;
+                }
             }
         }
 
-        function onresize() {
-            let w = window.outerWidth;
-            let h = window.outerHeight;
-            let size_div = document.querySelector("#size");
-            if (size_div.resize_count)
-                size_div.resize_count++;
-            else
-                size_div.resize_count = 1;
-            size_div.innerText = `width:${w} height:${h} count:${size_div.resize_count}`;
-        }
+        async function main() {
+            await init();
+            const width = 1280;
+            const height = 720;
+            const desired_fps = 60;
+            const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
+            const stream = await window.navigator.mediaDevices.getUserMedia(constraints);
+            const screen = document.querySelector('#screen');
+            screen.width = width;
+            screen.height = height;
+            const ctx = screen.getContext('2d', {alpha : false});
 
-        document.body.onload = () => {
-            window.addEventListener("resize", onresize);
-            onresize();
-        };
+            const offscreen = new OffscreenCanvas(width, height);
+            const offscreen_ctx = offscreen.getContext('2d', {willReadFrequently : false});
+            offscreen_ctx.fillStyle = "red";
+
+            const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
+            const detectorConfig = {
+                runtime: 'tfjs',
+                modelType: 'short',
+                //modelType: 'full',
+                maxFaces: 5,
+            };
+            const detector = await faceDetection.createDetector(model, detectorConfig);
+
+            let track = stream.getTracks()[0];
+            let settings = track.getSettings();
+            let media_processor = new MediaStreamTrackProcessor(track);
+            const reader = media_processor.readable.getReader();
+            const fps_counter = makeFpsCounter();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                const frame = value;
+                offscreen_ctx.drawImage(frame, 0, 0);
+                frame.close();
+
+                const faces = await detector.estimateFaces(offscreen);
+                ctx.drawImage(offscreen, 0, 0);
+                for (let face of faces) {
+                    const box = face.box;
+                    const safety_margin = box.width / 10;
+                    box.xMin -= safety_margin;
+                    box.yMin -= safety_margin;
+                    box.width += 2 * safety_margin;
+                    box.height += 2 * safety_margin;
+
+                    ctx.save();
+                    ctx.filter = 'blur(15px)';
+                    ctx.drawImage(offscreen, box.xMin, box.yMin, box.width, box.height, box.xMin, box.yMin, box.width, box.height);
+                    ctx.restore();
+                }
+                fps_counter();
+            }
+        }
     </script>
 
+</head>
+
+<body>
+    <div>
+        <select id="backend">
+          <option value="webgpu" selected>webgpu</option>
+          <option value="webgl">webgl</option>
+          <option value="wasm">wasm</option>
+        </select>
+        <button onclick="main()">Start</button>
+        <canvas id='screen'></canvas>
+    </div>
 </body>
 
 </html>
