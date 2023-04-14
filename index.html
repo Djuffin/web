@@ -29,7 +29,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu/dist/tf-backend-webgpu.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm/dist/tf-backend-wasm.js"></script>
 
-
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
     <script>
         async function init() {
@@ -55,13 +54,62 @@
             }
         }
 
+        function waitFor(delay_ms) {
+          return new Promise((resolve, _) => {
+            setTimeout(resolve, delay_ms);
+          });
+        }
+
+        function createDecodedStream(dataUri) {
+            const decoder_worker = new Worker("./decoder_worker.js");
+            const ready_frames = [];
+            let next_frame_ready_callback = null;
+            function onFrame(frame){
+                if (next_frame_ready_callback) {
+                    next_frame_ready_callback(frame);
+                    next_frame_ready_callback = null;
+                }
+                else
+                    ready_frames.push(frame);
+            }
+            decoder_worker.addEventListener("message", message => onFrame(message.data));
+            decoder_worker.postMessage({dataUri});
+
+            async function getNextFrame() {
+                if (ready_frames.length > 0)
+                    return ready_frames.shift();
+
+                let next_frame_promise = new Promise((resolve, reject) => {
+                    next_frame_ready_callback = resolve;
+                });
+                return next_frame_promise;
+            }
+            return getNextFrame;
+        }
+
+        async function getCameraInputReader(constraints) {
+            const stream = await window.navigator.mediaDevices.getUserMedia(constraints);
+            const track = stream.getTracks()[0];
+            const media_processor = new MediaStreamTrackProcessor(track);
+            const reader = media_processor.readable.getReader();
+            async function getNextFrame() {
+                const { done, value } = await reader.read();
+                if (done) {
+                    return null;
+                }
+                const frame = value;
+                return frame;
+            }
+            return getNextFrame;
+        }
+
         async function main() {
             await init();
-            const width = 1280;
-            const height = 720;
+            const width = 1920;
+            const height = 816;
+
             const desired_fps = 60;
             const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
-            const stream = await window.navigator.mediaDevices.getUserMedia(constraints);
             const screen = document.querySelector('#screen');
             screen.width = width;
             screen.height = height;
@@ -80,19 +128,15 @@
             };
             const detector = await faceDetection.createDetector(model, detectorConfig);
 
-            let track = stream.getTracks()[0];
-            let settings = track.getSettings();
-            let media_processor = new MediaStreamTrackProcessor(track);
-            const reader = media_processor.readable.getReader();
+            //let frameReader = await getCameraInputReader(constraints);
+            let frameReader = createDecodedStream('./legend.mp4');
             const fps_counter = makeFpsCounter();
             while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
+                let frame = await frameReader();
+                if (!frame) {
                     break;
                 }
-                const frame = value;
                 offscreen_ctx.drawImage(frame, 0, 0);
-                frame.close();
 
                 const faces = await detector.estimateFaces(offscreen);
                 ctx.drawImage(offscreen, 0, 0);
@@ -109,6 +153,8 @@
                     ctx.drawImage(offscreen, box.xMin, box.yMin, box.width, box.height, box.xMin, box.yMin, box.width, box.height);
                     ctx.restore();
                 }
+                //console.log(`Frame shown: ${frame.timestamp} faces: ${faces.length}`);
+                frame.close();
                 fps_counter();
             }
         }
