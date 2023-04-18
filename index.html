@@ -96,6 +96,48 @@
             }
         }
 
+        class Encoder {
+            constructor(width, height) {
+                this.frames = [];
+                this.worker = new Worker("./encoder_worker.js");
+                this.worker.onmessage = (e) => {
+                    this.done(e.data);
+                };
+                this.worker.postMessage({
+                    command : 'init',
+                    options : {width, height}
+                });
+            }
+
+            async processFrame(frame) {
+                this.worker.postMessage({
+                    command : 'frame',
+                    frame: frame
+                }, [frame]);
+            }
+
+            async flush() {
+                if (!this.worker)
+                    return;
+                this.worker.postMessage({
+                    command : 'flush'
+                });
+                let flush_promise = new Promise((resolve, reject) => {
+                    this.complete_callback = resolve;
+                });
+                return flush_promise;
+            }
+
+            done() {
+                this.worker.terminate();
+                this.worker = null;
+                if (this.complete_callback) {
+                    this.complete_callback();
+                    this.complete_callback = null;
+                }
+            }
+        }
+
         async function getCameraInputReader(constraints) {
             const stream = await window.navigator.mediaDevices.getUserMedia(constraints);
             const track = stream.getTracks()[0];
@@ -140,6 +182,7 @@
 
 
             let frameReader = createDecodedStream('./friends.mp4');
+            let encoder = new Encoder(width, height);
             console.log("end init");
 
             let start_time = performance.now();
@@ -177,11 +220,13 @@
 
                 if (processed_frames.length > 0)
                     modified_ctx.drawImage(processed_frames[0], 0, 0, canvas_width, canvas_height);
+
                 for (let processed_frame of processed_frames) {
                     processed_frame_counter++;
-                    processed_frame.close();
+                    encoder.processFrame(processed_frame);
                 }
             }
+            await encoder.flush();
             let end_time = performance.now();
             for (let p of processors)
                 p.close();
