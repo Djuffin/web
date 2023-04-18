@@ -1,7 +1,8 @@
 importScripts("./demuxer_mp4.js");
 
 function sendFrame(frame) {
-  self.postMessage(frame, [frame]);
+  let transfer = frame ? [frame] : null;
+  self.postMessage(frame, transfer);
 }
 
 // Startup.
@@ -26,8 +27,13 @@ function main({dataUri}) {
     onChunk(chunk) {
       decoder.decode(chunk);
     },
+    async onComplete() {
+      await decoder.flush();
+      decoder.close();
+      sendFrame(null);
+    },
     setStatus(status, info) {
-    	console.log(`Demuxer status: ${status} ${info}`);
+      console.log(`Demuxer status: ${status} ${info}`);
     }
   });
 }

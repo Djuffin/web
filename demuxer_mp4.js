@@ -28,6 +28,7 @@ class MP4FileSink {
   close() {
     this.#setStatus("fetch", "Done");
     this.#file.flush();
+    this.#file.onComplete();
   }
 }
 
@@ -36,19 +37,22 @@ class MP4FileSink {
 class MP4Demuxer {
   #onConfig = null;
   #onChunk = null;
+  #onComplete = null;
   #setStatus = null;
   #file = null;
 
-  constructor(uri, {onConfig, onChunk, setStatus}) {
+  constructor(uri, {onConfig, onChunk, onComplete, setStatus}) {
     this.#onConfig = onConfig;
     this.#onChunk = onChunk;
     this.#setStatus = setStatus;
+    this.#onComplete = onComplete;
 
     // Configure an MP4Box File for demuxing.
     this.#file = MP4Box.createFile();
     this.#file.onError = error => setStatus("demux", error);
     this.#file.onReady = this.#onReady.bind(this);
     this.#file.onSamples = this.#onSamples.bind(this);
+    this.#file.onComplete = this.#onComplete.bind(this);
 
     // Fetch the file and pipe the data through.
     const fileSink = new MP4FileSink(this.#file, setStatus);

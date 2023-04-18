@@ -36,24 +36,6 @@
             await tf.setBackend(backend);
         }
 
-        function makeFpsCounter() {
-            let label = document.createElement('pre');
-            document.body.appendChild(label);
-            let second = 0;
-            let fps = 0;
-            return function() {
-                let now = performance.now();
-                let current_second = Math.floor(now / 1000);
-                if (current_second != second) {
-                    label.innerText = `FPS: ${fps / (current_second - second)}`;
-                    fps = 0;
-                    second = current_second;
-                } else {
-                    fps++;
-                }
-            }
-        }
-
         function waitFor(delay_ms) {
           return new Promise((resolve, _) => {
             setTimeout(resolve, delay_ms);
@@ -64,7 +46,10 @@
             const decoder_worker = new Worker("./decoder_worker.js");
             const ready_frames = [];
             let next_frame_ready_callback = null;
-            function onFrame(frame){
+            function onFrame(frame) {
+                if (!frame) {
+                    decoder_worker.terminate();
+                }
                 if (next_frame_ready_callback) {
                     next_frame_ready_callback(frame);
                     next_frame_ready_callback = null;
@@ -76,6 +61,36 @@
             decoder_worker.postMessage({dataUri});
 
             async function getNextFrame() {
+                if (ready_frames.length > 0)
+                    return ready_frames.shift();
+
+                let next_frame_promise = new Promise((resolve, reject) => {
+                    next_frame_ready_callback = resolve;
+                });
+                return next_frame_promise;
+            }
+            return getNextFrame;
+        }
+
+        function createFrameConverter() {
+            const converter_worker = new Worker("./face_detection.js");
+            const ready_frames = [];
+            let next_frame_ready_callback = null;
+            function onFrame(frame) {
+                if (!frame) {
+                    converter_worker.terminate();
+                }
+                if (next_frame_ready_callback) {
+                    next_frame_ready_callback(frame);
+                    next_frame_ready_callback = null;
+                }
+                else
+                    ready_frames.push(frame);
+            }
+            converter_worker.addEventListener("message", message => onFrame(message.data));
+
+            async function getNextFrame(frame) {
+                converter_worker.postMessage(frame, [frame]);
                 if (ready_frames.length > 0)
                     return ready_frames.shift();
 
@@ -105,8 +120,8 @@
 
         async function main() {
             await init();
-            const width = 1920;
-            const height = 816;
+            const width = 1280;
+            const height = 720;
 
             const desired_fps = 60;
             const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
@@ -117,25 +132,26 @@
 
             const offscreen = new OffscreenCanvas(width, height);
             const offscreen_ctx = offscreen.getContext('2d', {willReadFrequently : false});
-            offscreen_ctx.fillStyle = "red";
 
             const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
             const detectorConfig = {
                 runtime: 'tfjs',
-                modelType: 'short',
-                //modelType: 'full',
-                maxFaces: 5,
+                //modelType: 'short',
+                modelType: 'full',
+                maxFaces: 7,
             };
             const detector = await faceDetection.createDetector(model, detectorConfig);
 
             //let frameReader = await getCameraInputReader(constraints);
-            let frameReader = createDecodedStream('./legend.mp4');
-            const fps_counter = makeFpsCounter();
+            let frameReader = createDecodedStream('./friends.mp4');
+            let start_time = performance.now();
+            let frame_counter = 0;
             while (true) {
                 let frame = await frameReader();
                 if (!frame) {
                     break;
                 }
+                frame_counter++;
                 offscreen_ctx.drawImage(frame, 0, 0);
 
                 const faces = await detector.estimateFaces(offscreen);
@@ -148,15 +164,17 @@
                     box.width += 2 * safety_margin;
                     box.height += 2 * safety_margin;
 
-                    ctx.save();
-                    ctx.filter = 'blur(15px)';
-                    ctx.drawImage(offscreen, box.xMin, box.yMin, box.width, box.height, box.xMin, box.yMin, box.width, box.height);
-                    ctx.restore();
+                    ctx.fillRect(box.xMin, box.yMin, box.width, box.height);
+
                 }
-                //console.log(`Frame shown: ${frame.timestamp} faces: ${faces.length}`);
                 frame.close();
-                fps_counter();
             }
+            let end_time = performance.now();
+
+            let label = document.createElement('pre');
+            document.body.appendChild(label);
+            label.innerText = `FPS: ${frame_counter / (end_time - start_time) * 1000}`;
+
         }
     </script>
 
