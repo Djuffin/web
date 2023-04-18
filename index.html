@@ -16,25 +16,9 @@
 
         #screen {
             border: solid;
-            position: relative;
         }
-
-        #screen
-
-
     </style>
-    <!-- Import @tensorflow/tfjs or @tensorflow/tfjs-core -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"> </script>
-
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu/dist/tf-backend-webgpu.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm/dist/tf-backend-wasm.js"></script>
-
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
     <script>
-        async function init() {
-            let backend = document.getElementById('backend').value;
-            await tf.setBackend(backend);
-        }
 
         function waitFor(delay_ms) {
           return new Promise((resolve, _) => {
@@ -72,34 +56,44 @@
             return getNextFrame;
         }
 
-        function createFrameConverter() {
-            const converter_worker = new Worker("./face_detection.js");
-            const ready_frames = [];
-            let next_frame_ready_callback = null;
-            function onFrame(frame) {
-                if (!frame) {
-                    converter_worker.terminate();
-                }
-                if (next_frame_ready_callback) {
-                    next_frame_ready_callback(frame);
-                    next_frame_ready_callback = null;
-                }
-                else
-                    ready_frames.push(frame);
+        class FrameProcessor {
+            constructor(width, height, backend) {
+                this.frames = [];
+                this.worker = new Worker("./frame_processing.js");
+                this.worker.onmessage = (e) => {
+                    this.onFrame(e.data);
+                };
+                this.worker.postMessage({
+                    command : 'init',
+                    options : {width, height, backend}
+                });
             }
-            converter_worker.addEventListener("message", message => onFrame(message.data));
 
-            async function getNextFrame(frame) {
-                converter_worker.postMessage(frame, [frame]);
-                if (ready_frames.length > 0)
-                    return ready_frames.shift();
+            async processFrame(frame) {
+                this.worker.postMessage({
+                    command : 'frame',
+                    frame: frame
+                }, [frame]);
 
                 let next_frame_promise = new Promise((resolve, reject) => {
-                    next_frame_ready_callback = resolve;
+                    this.next_frame_ready_callback = resolve;
                 });
                 return next_frame_promise;
             }
-            return getNextFrame;
+
+            onFrame(frame) {
+                if (!frame) {
+                    this.close();
+                }
+                if (this.next_frame_ready_callback) {
+                    this.next_frame_ready_callback(frame);
+                    this.next_frame_ready_callback = null;
+                }
+            }
+
+            close() {
+                this.worker.terminate();
+            }
         }
 
         async function getCameraInputReader(constraints) {
@@ -119,62 +113,82 @@
         }
 
         async function main() {
-            await init();
             const width = 1280;
             const height = 720;
-
+            const frames_in_parallel = 5;
+            const processors = [];
             const desired_fps = 60;
-            const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
-            const screen = document.querySelector('#screen');
-            screen.width = width;
-            screen.height = height;
-            const ctx = screen.getContext('2d', {alpha : false});
-
-            const offscreen = new OffscreenCanvas(width, height);
-            const offscreen_ctx = offscreen.getContext('2d', {willReadFrequently : false});
-
-            const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
-            const detectorConfig = {
-                runtime: 'tfjs',
-                //modelType: 'short',
-                modelType: 'full',
-                maxFaces: 7,
-            };
-            const detector = await faceDetection.createDetector(model, detectorConfig);
-
+            //const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
             //let frameReader = await getCameraInputReader(constraints);
+            const original_cnv = document.querySelector('#original_cnv');
+            let canvas_width = width / 2;
+            let canvas_height = height / 2;
+            original_cnv.width = canvas_width;
+            original_cnv.height = canvas_height;
+            const original_ctx = original_cnv.getContext('2d', {alpha : false});
+
+            const modified_cnv = document.querySelector('#modified_cnv');
+            modified_cnv.width = canvas_width;
+            modified_cnv.height = canvas_height;
+            const modified_ctx = modified_cnv.getContext('2d', {alpha : false});
+
+            console.log("begin init");
+            for (let i = 0; i < frames_in_parallel; i++) {
+                let processor = new FrameProcessor(width, height, '');
+                processors.push(processor);
+            }
+
+
             let frameReader = createDecodedStream('./friends.mp4');
+            console.log("end init");
+
             let start_time = performance.now();
-            let frame_counter = 0;
-            while (true) {
-                let frame = await frameReader();
-                if (!frame) {
-                    break;
+            let decoded_frame_counter = 0;
+            let processed_frame_counter = 0;
+
+            let end_of_stream = false;
+            while (!end_of_stream) {
+                let decoded_frames = [];
+
+                let i = 0;
+                for (i = 0; i < frames_in_parallel; i++) {
+                    let frame = await frameReader();
+                    if (!frame) {
+                        end_of_stream = true;
+                        break;
+                    }
+
+                    decoded_frame_counter++;
+                    decoded_frames.push(frame);
                 }
-                frame_counter++;
-                offscreen_ctx.drawImage(frame, 0, 0);
 
-                const faces = await detector.estimateFaces(offscreen);
-                ctx.drawImage(offscreen, 0, 0);
-                for (let face of faces) {
-                    const box = face.box;
-                    const safety_margin = box.width / 10;
-                    box.xMin -= safety_margin;
-                    box.yMin -= safety_margin;
-                    box.width += 2 * safety_margin;
-                    box.height += 2 * safety_margin;
+                if (decoded_frames.length > 0)
+                    original_ctx.drawImage(decoded_frames[0], 0, 0, canvas_width, canvas_height);
 
-                    ctx.fillRect(box.xMin, box.yMin, box.width, box.height);
-
+                i = 0;
+                let promises = [];
+                for (let frame of decoded_frames) {
+                    let processor = processors[i++];
+                    promises.push(processor.processFrame(frame));
                 }
-                frame.close();
+
+                let processed_frames = await Promise.all(promises);
+                processed_frames.sort((f1, f2) => { return f1.timestamp - f2.timestamp });
+
+                if (processed_frames.length > 0)
+                    modified_ctx.drawImage(processed_frames[0], 0, 0, canvas_width, canvas_height);
+                for (let processed_frame of processed_frames) {
+                    processed_frame_counter++;
+                    processed_frame.close();
+                }
             }
             let end_time = performance.now();
+            for (let p of processors)
+                p.close();
 
             let label = document.createElement('pre');
             document.body.appendChild(label);
-            label.innerText = `FPS: ${frame_counter / (end_time - start_time) * 1000}`;
-
+            label.innerText = `FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`;
         }
     </script>
 
@@ -182,13 +196,9 @@
 
 <body>
     <div>
-        <select id="backend">
-          <option value="webgpu" selected>webgpu</option>
-          <option value="webgl">webgl</option>
-          <option value="wasm">wasm</option>
-        </select>
         <button onclick="main()">Start</button>
-        <canvas id='screen'></canvas>
+        <canvas id='original_cnv'></canvas>
+        <canvas id='modified_cnv'></canvas>
     </div>
 </body>
 
