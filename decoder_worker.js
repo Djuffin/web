@@ -5,14 +5,11 @@ function sendFrame(frame) {
   self.postMessage(frame, transfer);
 }
 
-// Startup.
 function main({dataUri}) {
 
-  // Set up a VideoDecoer.
   const decoder = new VideoDecoder({
     output(frame) {
       sendFrame(frame);
-      //console.log(`Frame decoded: ${frame.timestamp}`);
     },
     error(e) {
       console.log(e);

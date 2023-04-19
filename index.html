@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="UTF-8">
-    <title>Face blur</title>
+    <title>Sepia Friends</title>
     <style>
         button {
             border: solid;
@@ -14,17 +13,20 @@
             font-size: 16px;
         }
 
-        #screen {
+        canvas {
             border: solid;
         }
     </style>
     <script>
 
-        function waitFor(delay_ms) {
-          return new Promise((resolve, _) => {
-            setTimeout(resolve, delay_ms);
-          });
-        }
+        function saveByteArray(reportName, buffer) {
+            var blob = new Blob([buffer], {type: "video/mp4"});
+            var link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            var fileName = reportName;
+            link.download = fileName;
+            link.click();
+        };
 
         function createDecodedStream(dataUri) {
             const decoder_worker = new Worker("./decoder_worker.js");
@@ -57,16 +59,28 @@
         }
 
         class FrameProcessor {
-            constructor(width, height, backend) {
+            constructor() {
                 this.frames = [];
                 this.worker = new Worker("./frame_processing.js");
+            }
+
+            async init(width, height, hide_faces) {
+                this.worker.postMessage({
+                    command : 'init',
+                    options : {width, height, hide_faces}
+                });
+                let init_complete_callback = null;
+                let init_complete_promise = new Promise((resolve, reject) => {
+                    init_complete_callback = resolve;
+                });
+
+                this.worker.onmessage = (e) => {
+                    init_complete_callback();
+                };
+                await init_complete_promise;
                 this.worker.onmessage = (e) => {
                     this.onFrame(e.data);
                 };
-                this.worker.postMessage({
-                    command : 'init',
-                    options : {width, height, backend}
-                });
             }
 
             async processFrame(frame) {
@@ -128,40 +142,27 @@
                 return flush_promise;
             }
 
-            done() {
+            done(encodedFile) {
                 this.worker.terminate();
                 this.worker = null;
                 if (this.complete_callback) {
                     this.complete_callback();
                     this.complete_callback = null;
                 }
+                saveByteArray("processed_video.mp4", encodedFile);
             }
         }
 
-        async function getCameraInputReader(constraints) {
-            const stream = await window.navigator.mediaDevices.getUserMedia(constraints);
-            const track = stream.getTracks()[0];
-            const media_processor = new MediaStreamTrackProcessor(track);
-            const reader = media_processor.readable.getReader();
-            async function getNextFrame() {
-                const { done, value } = await reader.read();
-                if (done) {
-                    return null;
-                }
-                const frame = value;
-                return frame;
-            }
-            return getNextFrame;
+        function say(text) {
+            let label = document.querySelector('#progress');
+            label.innerText = text;
         }
 
         async function main() {
             const width = 1280;
             const height = 720;
-            const frames_in_parallel = 5;
+            const frames_in_parallel = 3;
             const processors = [];
-            const desired_fps = 60;
-            //const constraints = { audio: false, video:  { width: width, height: height, frameRate: desired_fps } };
-            //let frameReader = await getCameraInputReader(constraints);
             const original_cnv = document.querySelector('#original_cnv');
             let canvas_width = width / 2;
             let canvas_height = height / 2;
@@ -174,18 +175,18 @@
             modified_cnv.height = canvas_height;
             const modified_ctx = modified_cnv.getContext('2d', {alpha : false});
 
-            console.log("begin init");
+            say("Initializing...");
+            const hide_faces = (document.querySelector('#effect').value == 'true');
             for (let i = 0; i < frames_in_parallel; i++) {
-                let processor = new FrameProcessor(width, height, '');
+                let processor = new FrameProcessor();
                 processors.push(processor);
             }
+            await Promise.all(processors.map(p => p.init(width, height, hide_faces)));
 
-
+            say('Processing...');
+            let start_time = performance.now();
             let frameReader = createDecodedStream('./friends.mp4');
             let encoder = new Encoder(width, height);
-            console.log("end init");
-
-            let start_time = performance.now();
             let decoded_frame_counter = 0;
             let processed_frame_counter = 0;
 
@@ -226,14 +227,14 @@
                     encoder.processFrame(processed_frame);
                 }
             }
+
+            say('finishing encoding...');
             await encoder.flush();
             let end_time = performance.now();
             for (let p of processors)
                 p.close();
 
-            let label = document.createElement('pre');
-            document.body.appendChild(label);
-            label.innerText = `Total time: ${(end_time - start_time) / 1000}s Frames: ${processed_frame_counter} FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`;
+            say(`Done! Total time: ${Math.ceil((end_time - start_time) / 1000)}s Frames: ${processed_frame_counter} FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`);
         }
     </script>
 
@@ -241,9 +242,18 @@
 
 <body>
     <div>
-        <button onclick="main()">Start</button>
-        <canvas id='original_cnv'></canvas>
-        <canvas id='modified_cnv'></canvas>
+        <a href='./friends.mp4'>Original Video File</a>
+        <button onclick="main()">Start Processing</button>
+        Effect:
+        <select id='effect'>
+            <option value='false'>Sepia</option>
+            <option value='true'>Hide faces with tf.js and WebGPU</option>
+        </select>
+        <label id='progress'></label>
+        <div>
+            <canvas id='original_cnv'></canvas>
+            <canvas id='modified_cnv'></canvas>
+        </div>
     </div>
 </body>
 
