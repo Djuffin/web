@@ -233,7 +233,7 @@
 
             let label = document.createElement('pre');
             document.body.appendChild(label);
-            label.innerText = `FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`;
+            label.innerText = `Total time: ${(end_time - start_time) / 1000}s Frames: ${processed_frame_counter} FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`;
         }
     </script>
 

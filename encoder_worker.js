@@ -5,7 +5,7 @@ async function dispatch({command, frame, options}) {
 		case 'init': {
       encoder = new VideoEncoder({
         output(chunk, md) {
-          console.log("Encoded: " + chunk.byteLength);
+          //console.log("Encoded: " + chunk.byteLength);
         },
         error(e) {
           console.log(e);
@@ -16,7 +16,7 @@ async function dispatch({command, frame, options}) {
         width: options.width,
         height: options.height,
         framerate: 30,
-        hardwareAcceleration: 'prefer-software',
+        hardwareAcceleration: 'prefer-hardware',
         bitrate: 3_000_000,
         avc: { format: 'annexb' }
       });

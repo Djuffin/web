@@ -22,7 +22,7 @@ function main({dataUri}) {
   // Fetch and demux the media data.
   const demuxer = new MP4Demuxer(dataUri, {
     onConfig(config) {
-      config.hardwareAcceleration = "prefer-software";
+      //config.hardwareAcceleration = "prefer-software";
       decoder.configure(config);
     },
     onChunk(chunk) {
