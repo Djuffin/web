@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Sepia Friends</title>
+    <style>
+        button {
+            border: solid;
+            margin: 15px 32px;
+            width: 150px;
+            text-align: center;
+            display: block;
+            font-size: 16px;
+        }
+
+        canvas {
+            border: solid;
+        }
+    </style>
+    <script>
+'use strict';
+
+function waitForNextFrame() {
+  return new Promise((resolve, _) => {
+    window.requestAnimationFrame(resolve);
+  });
+}
+
+function createRandomGenerator(seed) {
+  return function(max) {
+    seed = ((1 + seed) * 7 + 13) & 0x7fffffff;
+    return seed % max;
+  }
+}
+
+function showFrameForDebug(frame) {
+  const cnv = document.getElementById('debug_cnv');
+  var ctx = cnv.getContext('2d');
+  ctx.drawImage(frame, 0, 0);
+}
+
+function set_qp(codec, options, value) {
+  if (codec.includes('av01')) {
+    options.av1 = {quantizer: value};
+  }
+  if (codec.includes('vp9')) {
+    options.vp9 = {quantizer: value};
+  }
+  if (codec.includes('avc')) {
+    options.avc = {quantizer: value};
+  }
+}
+
+// Draw pseudorandom animation on the canvas
+function createDrawingFunction(cnv, changes_per_frame) {
+  var ctx = cnv.getContext('2d');
+  let width = cnv.width;
+  let height = cnv.height;
+  let rnd = createRandomGenerator(425533);
+  const w = 35;
+  const h = 30;
+  const white_noise_img = ctx.createImageData(w, h);
+  self.crypto.getRandomValues(white_noise_img.data);
+
+  return function() {
+    let x = 0, y = 0;
+    // Paint gradient filled ellipses
+    for (let i = 0; i < changes_per_frame; i++) {
+      x = rnd(width);
+      y = rnd(height);
+
+      let a =
+          'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')';
+      let b =
+          'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')';
+      let c =
+          'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')';
+      let gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+      gradient.addColorStop(0, a);
+      gradient.addColorStop(0.5, b);
+      gradient.addColorStop(1, c);
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.ellipse(x, y, w / 2, h / 2, 0.0, 0.0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // Add a bit of white noise
+    ctx.putImageData(white_noise_img, x, y);
+  }
+}
+
+async function createFrames(width, height, count, changes_per_frame) {
+  let cnv = new OffscreenCanvas(width, height);
+  const draw = createDrawingFunction(cnv, changes_per_frame);
+  let frames = [];
+  const duration = 33000; // 33ms ~ 30fps
+  for (let i = 0; i < count; i++) {
+  	await waitForNextFrame();
+  	draw(cnv, changes_per_frame);
+  	frames.push(new VideoFrame(cnv, { timestamp: duration * i }));
+  }
+  return frames;
+}
+
+async function encode_with_qp(codec, qp, frames) {
+  const encoder_config = {
+    codec: codec,
+    hardwareAcceleration: 'no-preference',
+    width: frames[0].width,
+    height: frames[0].height,
+    bitrateMode: 'quantizer',
+    framerate: 30
+  };
+
+  if (codec.startsWith('avc1')) {
+    encoder_config.avc = { format: 'annexb' };
+  }
+
+  const supported = (await VideoEncoder.isConfigSupported(encoder_config)).supported;
+  const chunks = [];
+  if (!supported) {
+    return chunks;
+  }
+
+  const init = {
+    output(chunk, metadata) {
+      chunks.push(chunk);
+    },
+    error(e) {
+      console.error(e);
+    }
+  };
+
+  let encoder = new VideoEncoder(init);
+  encoder.configure(encoder_config);
+
+  for (let frame of frames) {
+    let options = {keyFrame: false};
+    set_qp(codec, options, qp);
+    encoder.encode(frame, options);
+  }
+  await encoder.flush();
+  return chunks;
+}
+
+
+function total_chunk_size(chunks) {
+  let result = 0;
+  for (let chunk of chunks) {
+  	result += chunk.byteLength;
+  }
+  return result;
+}
+
+    </script>
+
+</head>
+
+<body>
+    <div>
+        <button onclick="main()">Start Processing</button>
+        Effect:
+        <select id='effect'>
+            <option value='false'>Sepia</option>
+            <option value='true'>Hide faces with tf.js and WebGPU</option>
+        </select>
+        <label id='progress'></label>
+        <div>
+            <canvas id='debug_cnv'></canvas>
+        </div>
+    </div>
+</body>
+
+</html>
