@@ -43,7 +43,7 @@ function set_qp(codec, options, value) {
   if (codec.includes('av01')) {
     options.av1 = {quantizer: value};
   }
-  if (codec.includes('vp9')) {
+  if (codec.includes('vp09')) {
     options.vp9 = {quantizer: value};
   }
   if (codec.includes('avc')) {
@@ -108,8 +108,8 @@ async function encode_with_qp(codec, qp, frames) {
   const encoder_config = {
     codec: codec,
     hardwareAcceleration: 'no-preference',
-    width: frames[0].width,
-    height: frames[0].height,
+    width: frames[0].codedWidth,
+    height: frames[0].codedHeight,
     bitrateMode: 'quantizer',
     framerate: 30
   };
@@ -154,19 +154,29 @@ function total_chunk_size(chunks) {
   return result;
 }
 
+async function main() {
+  const width = 640;
+  const height = 480;
+  const changes_per_frame = 60;
+  const codec = 'vp09.00.10.08';
+  for (let qp = 1; qp < 60; qp++) {
+    let frames = await createFrames(width, height, 100, changes_per_frame);
+    let chunks = await encode_with_qp(codec, qp, frames);
+    let size = total_chunk_size(chunks);
+    console.log(`complexity:${changes_per_frame} qp:${qp} size:${size}`);
+    for (let frame of frames)
+      frame.close();
+  }
+
+}
+
     </script>
 
 </head>
 
 <body>
     <div>
-        <button onclick="main()">Start Processing</button>
-        Effect:
-        <select id='effect'>
-            <option value='false'>Sepia</option>
-            <option value='true'>Hide faces with tf.js and WebGPU</option>
-        </select>
-        <label id='progress'></label>
+        <button onclick="main()">Start</button>
         <div>
             <canvas id='debug_cnv'></canvas>
         </div>
