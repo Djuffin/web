@@ -196,11 +196,10 @@
         }
       }      
       
-      ctx.font = '30px Helvetica';
-      const text = "😊📹📷😎🐨🐸🦓🐔 🎥🎞️😊";
-      const size = ctx.measureText(text).width;     
-     
+      ctx.font = '100px Helvetica';     
       let drawOneFrame = function (time) {
+        const text = time.toString();
+        const size = ctx.measureText(text).width;     
         let angle = Math.PI * 2 * (time / 5000);
         let scale = 1 + 0.3 * Math.sin(Math.PI * 2 * (time / 7000));
         ctx.save();
@@ -213,13 +212,18 @@
         ctx.fillStyle = "hsl(" + (angle * 40 ) + ",80%,50%)";
         ctx.fillRect(-size / 2, 10, size, 25);
         
-        ctx.fillStyle = 'black';
+        ctx.fillStyle = 'black';       
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 8;
+        ctx.strokeText(text, -size / 2, 0);
+        
+        ctx.fillStyle = 'white';
         ctx.fillText(text, -size / 2, 0);        
         
         ctx.restore();        
         window.requestAnimationFrame(drawOneFrame);
       }
-      drawOneFrame(performance.now());
+      drawOneFrame(0);
       await waitForNextFrame();
     }
     
@@ -239,16 +243,15 @@
       srcCnv.height = dims.height;
       let dstCnv = document.getElementById("dst");
       dstCnv.width = srcCnv.width;
-      dstCnv.height = srcCnv.height;      
-      startDrawing(srcCnv);
+      dstCnv.height = srcCnv.height;            
       let source_type = document.getElementById('source').value;
-
       
       let stream = null;
       if (source_type == 'camera') {
         let constraints = { audio: false, video:  { width: dims.width, height: dims.height, frameRate: fps } };
         stream = await window.navigator.mediaDevices.getUserMedia(constraints);
       } else if(source_type == 'canvas-capture' || source_type == 'canvas-copy') {
+        startDrawing(srcCnv);
         stream = srcCnv.captureStream(fps);
       } 
       
