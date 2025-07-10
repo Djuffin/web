@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebCodecs &amp; WebGPU Video Player</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 2em;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #4a90e2;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5em;
+            background-color: #2b2b2b;
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 800px;
+        }
+        canvas {
+            width: 100%;
+            height: auto;
+            max-width: 720px;
+            border-radius: 8px;
+            background-color: #000;
+            border: 2px solid #4a90e2;
+        }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1em;
+        }
+        input[type="file"], input[type="text"], button {
+            font-size: 1rem;
+            padding: 0.8em 1.2em;
+            border-radius: 8px;
+            border: 1px solid #4a90e2;
+            background-color: #333;
+            color: #e0e0e0;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        input[type="text"] {
+             width: 300px;
+        }
+        button:hover, input[type="file"]:hover {
+            background-color: #4a90e2;
+            color: #fff;
+            box-shadow: 0 0 10px #4a90e2;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            color: #888;
+            border-color: #666;
+        }
+        #log {
+            width: 100%;
+            height: 150px;
+            background-color: #111;
+            border: 1px solid #444;
+            border-radius: 8px;
+            overflow-y: scroll;
+            padding: 1em;
+            box-sizing: border-box;
+            font-family: monospace;
+            white-space: pre-wrap;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>WebCodecs &amp; WebGPU Video Player</h1>
+        <p>Select a local MP4 file or provide a URL to download and play.</p>
+        
+        <canvas id="webgpu-canvas" width="1280" height="720"></canvas>
+        
+        <div id="controls">
+            <input type="text" id="video-url" placeholder="Enter video URL (e.g., sample.mp4)" value="https://cdn.glitch.me/16a76161-74b3-4432-8612-f0cdc419ab5b/hummingbird%20drums.mp4?v=1750353608690">
+            <button id="load-btn">Load and Play Video</button>
+            
+            <input type="file" id="file-input" style='display:none' accept="video/mp4">
+            <label for="number-select" >Select how many frames to hold:</label>
+            <select id="number-select" name="number-select">
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+            </select>          
+        </div>
+        
+        <h2>Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <!-- MP4Box.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+  
+    <script id="worker">
+        // --- This entire script runs in a separate worker thread ---
+
+        let gpuDevice;
+        let gpuContext;
+        let gpuPipeline;
+        let gpuSampler;
+        let pendingFrames = [];
+
+        // --- Logging Utility for Worker ---
+        // The worker cannot access the DOM directly, so it posts messages back to the main thread.
+        function log(message) {
+            self.postMessage({ type: 'log', message: message });
+        }
+
+        // --- Main Worker Message Handler ---
+        self.onmessage = function(e) {
+            const { type, canvas, frame, frameLimit } = e.data;
+
+            switch (type) {
+                case 'init':
+                    // Initialize WebGPU with the transferred OffscreenCanvas
+                    initializeGpu(canvas);
+                    break;
+                case 'frame':
+                    // Render a new frame received from the main thread
+                    if (gpuDevice && frame) {
+                        renderFrame(frame);
+                    }
+                    pendingFrames.push(frame);
+                    if (pendingFrames.length > frameLimit) {
+                        pendingFrames.shift().close();
+                    }
+                    break;
+            }
+        };
+
+        // --- WebGPU Initialization in Worker ---
+        async function initializeGpu(canvas) {
+            if (!navigator.gpu) {
+                log("WebGPU not supported on this browser/worker.");
+                return;
+            }
+
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    throw new Error("Failed to get GPU adapter.");
+                }
+                gpuDevice = await adapter.requestDevice();
+                
+                gpuContext = canvas.getContext('webgpu');
+                const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+
+                gpuContext.configure({
+                    device: gpuDevice,
+                    format: presentationFormat,
+                    alphaMode: 'premultiplied',
+                });
+                
+                log("[Worker] WebGPU Initialized Successfully.");
+                setupRenderPipeline(presentationFormat);
+
+            } catch (e) {
+                log(`[Worker] Error initializing WebGPU: ${e.message}`);
+            }
+        }
+
+        // --- WebGPU Rendering Pipeline Setup in Worker ---
+        function setupRenderPipeline(presentationFormat) {
+            const shaderModule = gpuDevice.createShaderModule({
+                code: `
+                    struct VertexOutput {
+                        @builtin(position) position: vec4<f32>,
+                        @location(0) tex_coord: vec2<f32>,
+                    };
+
+                    @vertex
+                    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+                        var output: VertexOutput;
+                        // Create a fullscreen quad manually using vertex_index
+                        let x = f32(in_vertex_index / 2u) * 2.0 - 1.0;
+                        let y = f32(in_vertex_index % 2u) * 2.0 - 1.0;
+                        output.position = vec4<f32>(x, -y, 0.0, 1.0);
+                        output.tex_coord = vec2<f32>( (x + 1.0) * 0.5, (y + 1.0) * 0.5 );
+                        return output;
+                    }
+
+                    @group(0) @binding(0) var my_sampler: sampler;
+                    @group(0) @binding(1) var my_texture: texture_external;
+
+                    @fragment
+                    fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+                        return textureSampleBaseClampToEdge(my_texture, my_sampler, in.tex_coord);
+                    }
+                `,
+            });
+            
+            gpuPipeline = gpuDevice.createRenderPipeline({
+                layout: 'auto',
+                vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format: presentationFormat }],
+                },
+                primitive: { topology: 'triangle-strip' },
+            });
+            
+            gpuSampler = gpuDevice.createSampler({
+                magFilter: 'linear',
+                minFilter: 'linear',
+            });
+            log("[Worker] WebGPU Render Pipeline Created.");
+        }
+
+        // --- Frame Rendering in Worker ---
+        function renderFrame(frame) {
+            const uniformBindGroup = gpuDevice.createBindGroup({
+                layout: gpuPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: gpuSampler },
+                    { binding: 1, resource: gpuDevice.importExternalTexture({ source: frame }) },
+                ],
+            });
+
+            const commandEncoder = gpuDevice.createCommandEncoder();
+            const textureView = gpuContext.getCurrentTexture().createView();
+            
+            const renderPassDescriptor = {
+                colorAttachments: [{
+                    view: textureView,
+                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }],
+            };
+
+            const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+            passEncoder.setPipeline(gpuPipeline);
+            passEncoder.setBindGroup(0, uniformBindGroup);
+            passEncoder.draw(4);
+            passEncoder.end();
+
+            gpuDevice.queue.submit([commandEncoder.finish()]);
+        }
+    </script>  
+
+    <script type="module">
+        // --- DOM Elements ---
+        const canvas = document.getElementById('webgpu-canvas');
+        const fileInput = document.getElementById('file-input');
+        const urlInput = document.getElementById('video-url');
+        const loadBtn = document.getElementById('load-btn');
+        const logElement = document.getElementById('log');
+
+        let mp4boxfile;
+        let videoDecoder;
+        let gpuDevice;
+        let gpuContext;
+        let gpuPipeline;
+        let gpuSampler;
+        let videoTrackInfo;
+        let seenKeyFrame = false;
+        let stats = { chunks : 0, frames: 0 };
+        let rendererWorker;
+
+        // --- Logging Utility ---
+        function log(message) {
+            console.log(message);
+            logElement.textContent += message + '\n';
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // --- Main Initialization ---
+        async function initialize() {
+
+            // Create worker from the script tag
+            const workerScript = document.getElementById('worker').textContent;
+            const workerBlob = new Blob([workerScript], { type: 'application/javascript' });
+            rendererWorker = new Worker(URL.createObjectURL(workerBlob));
+            
+            // Listen for log messages from the worker
+            rendererWorker.onmessage = (e) => {
+                if (e.data.type === 'log') {
+                    log(e.data.message);
+                }
+            };
+            
+            // Transfer canvas control to the worker
+            const offscreen = canvas.transferControlToOffscreen();            
+            rendererWorker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
+
+            fileInput.addEventListener('change', handleFileSelect);
+            loadBtn.addEventListener('click', handleUrlLoad);
+
+            loadBtn.disabled = false;
+            fileInput.disabled = false;
+
+        }
+
+        // --- WebGPU Rendering Pipeline Setup ---
+        function setupRenderPipeline(presentationFormat) {
+            const shaderModule = gpuDevice.createShaderModule({
+                code: `
+                    struct VertexOutput {
+                        @builtin(position) position: vec4<f32>,
+                        @location(0) tex_coord: vec2<f32>,
+                    };
+
+                    @vertex
+                    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+                        var output: VertexOutput;
+                        let x = f32(in_vertex_index / 2u) * 2.0 - 1.0;
+                        let y = f32(in_vertex_index % 2u) * 2.0 - 1.0;
+                        output.position = vec4<f32>(x, -y, 0.0, 1.0);
+                        output.tex_coord = vec2<f32>(
+                            (x + 1.0) * 0.5,
+                            (y + 1.0) * 0.5
+                        );
+                        return output;
+                    }
+
+                    @group(0) @binding(0) var my_sampler: sampler;
+                    @group(0) @binding(1) var my_texture: texture_external;
+
+                    @fragment
+                    fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+                        return textureSampleBaseClampToEdge(my_texture, my_sampler, in.tex_coord);
+                    }
+                `,
+            });
+            
+            gpuPipeline = gpuDevice.createRenderPipeline({
+                layout: 'auto',
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: 'vs_main',
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format: presentationFormat }],
+                },
+                primitive: {
+                    topology: 'triangle-strip',
+                },
+            });
+            
+            gpuSampler = gpuDevice.createSampler({
+                magFilter: 'linear',
+                minFilter: 'linear',
+            });
+            log("WebGPU Render Pipeline Created.");
+        }
+
+
+        // --- Video Processing Logic ---
+
+        function setupDemuxerAndDecoder(file) {            
+            // Reset state for new file
+            seenKeyFrame = false;
+            stats = { chunks : 0, frames: 0 };
+            //if (videoDecoder && videoDecoder.state !== 'closed') {
+            //    videoDecoder.close();
+            //}
+            
+            log("Setting up MP4Box demuxer and VideoDecoder...");
+            mp4boxfile = MP4Box.createFile();
+
+            mp4boxfile.onReady = (info) => {
+                log("MP4Box: File ready.");
+                videoTrackInfo = info.videoTracks[0];
+                if (!videoTrackInfo) {
+                    log("Error: No video track found in the file.");
+                    return;
+                }
+
+                // Adjust canvas size to video aspect ratio
+                //canvas.width = videoTrackInfo.track_width;
+                //canvas.height = videoTrackInfo.track_height;
+                log(`Video dimensions: ${canvas.width}x${canvas.height}`);
+              
+
+                const trak = mp4boxfile.getTrackById(videoTrackInfo.id);
+                for (const entry of trak.mdia.minf.stbl.stsd.entries) {
+                  const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+                  if (box) {
+                    const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                    box.write(stream);
+                    videoTrackInfo.description = new Uint8Array(stream.buffer, 8);  // Remove the box header.
+                  }
+                }
+
+                setupVideoDecoder(videoTrackInfo);
+
+                mp4boxfile.setExtractionOptions(videoTrackInfo.id, null, { nbSamples: 1000 });
+                mp4boxfile.start();
+            };
+
+            mp4boxfile.onSamples = (track_id, user, samples) => {
+                // This callback receives the encoded video chunks.
+                let chunks = []
+                let ts2chunk = new Map();
+                for (const sample of samples) {
+                    const chunk = new EncodedVideoChunk({
+                        type: sample.is_sync ? 'key' : 'delta',
+                        timestamp: 1000000 * sample.cts / sample.timescale,
+                        duration: sample.duration,
+                        data: sample.data,
+                    });
+                    chunks.push(chunk);                    
+                    ts2chunk.set(chunk.timestamp, chunk);
+
+                }
+              
+                for (const ts of TIMESTAMPS) {
+                  let chunk = ts2chunk.get(ts);
+                  log(`Decoding chunk ts: ${chunk.timestamp} size:${chunk.byteLength }`);
+                  videoDecoder.decode(chunk);
+                  stats.chunks++;                  
+                }
+            };
+            
+            let offset = 0;
+            const reader = file.stream().getReader();
+            reader.read().then(async function processChunk({ done, value }) {
+                if (done) {
+                    log("File stream finished.");
+                    mp4boxfile.flush();
+                  
+                    videoDecoder.reset();
+                    await videoDecoder.flush();
+                    log("Decoding completed");
+                  
+                  /*
+                    setTimeout(() => { 
+                      log(`Stats chunks:${stats.chunks} frames:${stats.frames}`);
+                      if (stats.chunks == stats.frames) {
+                        setupDemuxerAndDecoder(file); 
+                      }
+                    }, 5);*/
+                    return;
+                }
+                const buffer = value.buffer;
+                buffer.fileStart = offset;
+                offset += buffer.byteLength;
+                mp4boxfile.appendBuffer(buffer);
+                reader.read().then(processChunk);
+            });
+        }
+      
+        function setupVideoDecoder(trackInfo) {
+            if (!videoDecoder) {
+              videoDecoder = new VideoDecoder({
+                  output: (frame) => {
+                      stats.frames++;
+                      let frameLimit = parseInt(document.getElementById('number-select').value);
+                      rendererWorker.postMessage({ type: 'frame', frame: frame, frameLimit }, [frame]);
+                  },
+                  error: (e) => {
+                      log(`VideoDecoder error: ${e.message}`);
+                  },
+              });
+            }
+            
+            const config = {
+                codec: trackInfo.codec,
+                codedWidth: trackInfo.track_width,
+                codedHeight: trackInfo.track_height,
+                description: trackInfo.description,
+            };
+
+            if (VideoDecoder.isConfigSupported(config)){
+                videoDecoder.configure(config);
+                log("VideoDecoder configured successfully.");
+            } else {
+                log("VideoDecoder configuration not supported.");
+            }
+        }
+        
+        // --- Frame Rendering ---
+        
+        function renderFrame(frame) {
+            const uniformBindGroup = gpuDevice.createBindGroup({
+                layout: gpuPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: gpuSampler },
+                    { binding: 1, resource: gpuDevice.importExternalTexture({ source: frame }) },
+                ],
+            });
+
+            const commandEncoder = gpuDevice.createCommandEncoder();
+            const textureView = gpuContext.getCurrentTexture().createView();
+            
+            const renderPassDescriptor = {
+                colorAttachments: [{
+                    view: textureView,
+                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }],
+            };
+
+            const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+            passEncoder.setPipeline(gpuPipeline);
+            passEncoder.setBindGroup(0, uniformBindGroup);
+            passEncoder.draw(4); // Draw a quad (2 triangles made of 4 vertices)
+            passEncoder.end();
+
+            gpuDevice.queue.submit([commandEncoder.finish()]);
+        }
+
+        // --- User Interaction Handlers ---
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                log(`File selected: ${file.name}`);
+                urlInput.value = ''; // Clear URL input
+                setupDemuxerAndDecoder(file);
+            }
+        }
+        
+        async function handleUrlLoad() {
+            const url = urlInput.value;
+            if (!url) {
+                log("Please enter a video URL.");
+                return;
+            }
+            log(`Fetching video from URL: ${url}`);
+            try {
+                loadBtn.disabled = true;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const blob = await response.blob();
+                const file = new File([blob], "downloaded.mp4", { type: "video/mp4" });
+                log("Download complete. Starting processing.");
+                setupDemuxerAndDecoder(file);
+            } catch (e) {
+                log(`Error fetching video: ${e.message}`);
+            } finally {
+                loadBtn.disabled = false;
+            }
+        }
+
+        // --- Start the application ---
+        initialize();
+        const TIMESTAMPS = [
+          83333, 
+250000, 
+166666, 
+125000, 
+208333, 
+416666, 
+333333, 
+291666, 
+375000, 
+583333, 
+500000, 
+458333, 
+541666, 
+750000, 
+666666, 
+625000, 
+708333, 
+916666, 
+833333, 
+791666, 
+875000, 
+1083333, 
+1000000, 
+958333, 
+1041666, 
+1250000, 
+1166666, 
+1125000, 
+1208333, 
+1416666, 
+1333333, 
+1291666, 
+1375000, 
+1583333, 
+1500000, 
+1458333, 
+1541666, 
+1750000, 
+1666666, 
+1625000, 
+1708333, 
+1916666, 
+1833333, 
+1791666, 
+1875000, 
+2083333, 
+2000000, 
+1958333, 
+2041666, 
+2250000, 
+2166666, 
+2125000, 
+2208333, 
+2416666, 
+2333333, 
+2291666, 
+2375000, 
+2583333, 
+2500000, 
+2458333, 
+2541666, 
+2750000, 
+2666666, 
+2625000, 
+2708333, 
+2833333, 
+2791666, 
+3000000, 
+2916666, 
+2875000, 
+2958333, 
+3166666, 
+3083333, 
+3041666, 
+3125000, 
+3333333, 
+3250000, 
+3208333, 
+3291666, 
+3500000, 
+3416666, 
+3375000, 
+3458333, 
+3666666, 
+3583333, 
+3541666, 
+3625000, 
+3833333, 
+3750000, 
+3708333, 
+3791666, 
+4000000, 
+3916666, 
+3875000, 
+3958333, 
+4166666, 
+4083333, 
+4041666, 
+4125000, 
+4333333, 
+4250000, 
+4208333, 
+4291666, 
+4500000, 
+4416666, 
+4375000, 
+4458333, 
+4666666, 
+4583333, 
+4541666, 
+4625000, 
+4791666, 
+4708333, 
+4750000, 
+4833333, 
+4916666, 
+4875000, 
+5000000, 
+4958333, 
+5083333, 
+5041666, 
+5250000, 
+5166666, 
+5125000, 
+5208333, 
+5291666, 
+5333333, 
+5375000
+        ];
+
+    </script>
+</body>
+</html>

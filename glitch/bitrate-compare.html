@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">    
+  <title>WebCodecs Bitrate Test</title>
+  <style>
+    canvas {
+      padding: 5px;
+      background: gold;
+    }
+    
+    video {
+      padding: 5px;
+      background: blue;
+    }
+
+    button {
+      background-color: #555555;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      width: 150px;
+      text-align: center;
+      display: block;
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <div>    
+    <div>     
+      <span>
+        Codec: 
+        <select id="codec">
+          <option value="vp8">VP8</option>
+          <option value="vp09.00.10.08">VP9</option>
+          <option value="avc1.420034">h264 baseline</option>
+          <option value="avc1.4d0034" selected>h264 main</option>
+          <option value="avc1.640034">h264 high</option>
+          <option value='hvc1.1.6.L123.00'>h265</option>
+          <option value="av01.0.04M.08">AV1 lvl4</option>
+        </select>
+      </span>      
+      <span>
+        Bitrate: 
+        <select  id="bitrate">
+          <option value="0">0 kbps</option>
+          <option value="500000">500 kbps</option>
+          <option value="600000">600 kbps</option>
+          <option value="700000">700 kbps</option>
+          <option value="800000">800 kbps</option>
+          <option value="900000">900 kbps</option>
+          <option value="1000000">1000 kbps</option>
+          <option value="1100000">1100 kbps</option>
+          <option value="1200000">1200 kbps</option>
+          <option value="1300000">1300 kbps</option>
+          <option value="1400000">1400 kbps</option>
+          <option value="1500000" selected>1500 kbps</option>
+          <option value="1600000">1600 kbps</option>
+          <option value="1700000">1700 kbps</option>
+          <option value="1800000">1800 kbps</option>
+          <option value="1900000">1900 kbps</option>
+          <option value="2000000">2000 kbps</option>
+          <option value="2100000">2100 kbps</option>
+          <option value="2200000">2200 kbps</option>
+          <option value="2300000">2300 kbps</option>
+          <option value="2400000">2400 kbps</option>
+          <option value="2500000">2500 kbps</option>
+          <option value="2600000">2600 kbps</option>
+          <option value="2700000">2700 kbps</option>
+          <option value="2800000">2800 kbps</option>
+          <option value="2900000">2900 kbps</option>
+          <option value="3000000">3000 kbps</option>
+          <option value="3500000">3500 kbps</option>
+          <option value="4000000">4000 kbps</option>
+          <option value="4500000">4500 kbps</option>
+          <option value="5000000">5000 kbps</option> 
+          <option value="8000000">8000 kbps</option>
+          <option value="20000000">20 Mpbs</option>
+          <option value="50000000">50 Mbps</option>
+        </select>
+      </span>
+      <span>
+        Encoder: 
+        <select id="acceleration">          
+          <option value="prefer-software">Software</option>
+          <option value="prefer-hardware" selected>Hardware</option>
+        </select>
+      </span>
+      <span>
+        Bitrate mode: 
+        <select id="bitrate-mode">          
+          <option value="constant" selected>Constant</option>
+          <option value="variable">Variable</option>
+        </select>
+      </span>    
+      <span>
+        Scalabitity: 
+        <select id="scalability">
+          <option value="L1T1" selected>L1T1</option>
+          <option value="L1T2">L1T2</option>
+          <option value="L1T3">L1T3</option>
+        </select>
+      </span>
+      <span>
+        Latency: 
+        <select id="latency">
+          <option value="quality" >quality</option>
+          <option value="realtime" selected>realtime</option>
+        </select>
+      </span>      
+      <span>
+        Framerate: 
+        <select  id="framerate">          
+          <option value="10">10 fps</option>
+          <option value="15">15 fps</option>
+          <option value="24" selected>24 fps</option>
+          <option value="25">25 fps</option>
+          <option value="30">30 fps</option>
+          <option value="60">60 fps</option>
+        </select>
+      </span>    
+          <span>
+        Changes per frame: 
+        <select  id="changes">          
+          <option value="10">10 squares</option>
+          <option value="15" selected>15 squares</option>
+          <option value="25">25 squares</option>
+          <option value="30">30 squares</option>
+          <option value="60">60 squares</option>
+          <option value="80">80 squares</option>
+          <option value="100">100 squares</option>
+          <option value="150">150 squares</option>
+        </select>
+      </span> 
+      <span>
+        Size: 
+        <select id="dims">          
+          <option value="{ &quot;width&quot;:640,  &quot;height&quot;:360 }">640 x 360</option>
+          <option value="{ &quot;width&quot;:720,  &quot;height&quot;:480 }">720 x 480</option>
+          <option value="{ &quot;width&quot;:1280, &quot;height&quot;:720 }" selected>1280 x 780</option>
+          <option value="{ &quot;width&quot;:1920, &quot;height&quot;:1280 }">1920 x 1280</option>
+        </select>
+      </span>
+        Frame source: 
+        <select  id="source">          
+          <option value="camera">Camera</option>
+          <option value="canvas" selected>Generated</option>
+        </select>
+      </span> 
+      <div>
+        <textarea id="log"  rows="20" cols="80"></textarea>
+      </div>
+      <button id='start' onclick="main()">Start Test</button>
+      <button id='reconfigure' onclick="reconfigure()" style="visibility:hidden">Reconfigure</button>
+    </div>
+    
+    
+    <canvas id="src" style='display:none'></canvas>   
+    <video id="vPreview" autoplay muted></video>        
+    <canvas id="dst"></canvas>   
+  </div>
+  
+  
+  <script>
+    let keep_going = true;    
+    let ts_mesure_point = 0;
+    let total_chunk_size = 0;
+    let encoder_config = null;
+    let encoder = null;
+
+    function appendMsg(msg) {
+      document.getElementById("log").value += (msg + "\n");
+    }
+    
+    function rnd(x) {
+      return Math.floor(Math.random() * x);
+    }
+    
+    // Draw pretty animation on the canvas
+    async function startDrawing(cnv, changes_per_frame) {
+      var ctx = cnv.getContext('2d');
+     
+      ctx.fillStyle = "white";
+      let width = cnv.width;
+      let height = cnv.height;
+      let cx = width / 2;
+      let cy = height / 2;
+      let r = Math.min(width, height) / 5;
+      ctx.fillRect(0, 0, width, height);
+      
+      function noise() {
+        for (let i = 0; i < changes_per_frame; i++) {
+            let x = rnd(width); 
+            let y = rnd(height);
+            let w = 30;
+            let h = 30;
+            let a = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let b = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let c = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+            gradient.addColorStop(0, a);
+            gradient.addColorStop(0.5, b);
+            gradient.addColorStop(1, c);
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, y, w, h);
+        }
+      }      
+      
+      ctx.font = '100px Helvetica';
+     
+      let drawOneFrame = function (time) {
+        const text = time.toString();
+        const size = ctx.measureText(text).width;             
+        let angle = Math.PI * 2 * (time / 5000);
+        let scale = 1 + 0.3 * Math.sin(Math.PI * 2 * (time / 7000));
+        ctx.save();
+        noise();
+
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.scale(scale, scale);       
+      
+        ctx.fillStyle = "hsl(" + (angle * 40 ) + ",80%,50%)";
+        ctx.fillRect(-size / 2, 10, size, 25);
+        
+        ctx.fillStyle = 'black';       
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 8;
+        ctx.strokeText(text, -size / 2, 0);
+        
+        ctx.fillStyle = 'white';
+        ctx.fillText(text, -size / 2, 0);        
+        
+        ctx.restore();        
+        window.requestAnimationFrame(drawOneFrame);
+      }
+      window.requestAnimationFrame(drawOneFrame);
+    }    
+   
+    function reconfigure() {
+      let bitrate = Number.parseInt(document.getElementById('bitrate').value);
+      let fps = Number.parseInt(document.getElementById('framerate').value);
+      let bitrateMode = document.getElementById('bitrate-mode').value;
+      
+      encoder_config = {
+        ...encoder_config,
+        bitrate: bitrate,
+        bitrateMode: bitrateMode,
+        framerate: fps
+      };        
+      
+      encoder.configure(encoder_config);
+      let frame = new VideoFrame(document.getElementById("src"), { timestamp: 0 });
+      encoder.encode(frame, { keyFrame: true }); 
+      console.log("Reconfiguring encoder with config: " + JSON.stringify(encoder_config))      
+    }
+    
+    async function captureAndEncode(processChunk) {
+      let video = document.getElementById("vPreview");
+      let frame_counter = 0;
+      let output_counter = 0;
+      let codec_string = document.getElementById('codec').value;
+      let bitrate = Number.parseInt(document.getElementById('bitrate').value);
+      let changes = Number.parseInt(document.getElementById('changes').value);
+      let acceleration = document.getElementById('acceleration').value;
+      let fps = Number.parseInt(document.getElementById('framerate').value);
+      let bitrateMode = document.getElementById('bitrate-mode').value;
+      let dims = JSON.parse(document.getElementById('dims').value)
+      let scalability = document.getElementById('scalability').value;
+      let latencyMode = document.getElementById('latency').value;
+      let srcCnv = document.getElementById("src");
+      srcCnv.width = dims.width;
+      srcCnv.height = dims.height;
+      let dstCnv = document.getElementById("dst");
+      dstCnv.width = srcCnv.width;
+      dstCnv.height = srcCnv.height;            
+
+      
+      let stream = null;
+      if (document.getElementById('source').value == 'camera') {
+        let constraints = { audio: false, video:  { width: dims.width, height: dims.height, frameRate: fps } };
+        stream = await window.navigator.mediaDevices.getUserMedia(constraints);      
+      } else {
+        startDrawing(srcCnv, changes);
+        stream = srcCnv.captureStream(fps);  
+      }
+      
+      let track = stream.getTracks()[0];
+      let settings = track.getSettings();
+      
+      fps = settings.frameRate;
+      appendMsg(`Set bitrate: ${bitrate} bps`);
+      appendMsg(`Set acceleration: ${acceleration}`);      
+      appendMsg(`Set frame rate: ${fps}`);      
+      video.srcObject = stream;
+      let media_processor = new MediaStreamTrackProcessor(track);
+      const reader = media_processor.readable.getReader();
+      
+      const init = {
+        output: (chunk, config) => {
+          processChunk(chunk, config);
+          total_chunk_size += chunk.byteLength;
+          output_counter++;
+
+          if (chunk.type == "key")
+            appendMsg("Keyframe!");
+          if (ts_mesure_point == 0) {
+            ts_mesure_point = chunk.timestamp;
+          } 
+          let duration_sec = (chunk.timestamp - ts_mesure_point) / 1_000_000;
+          if (duration_sec > 3) {
+            let bendwidth = Math.round(total_chunk_size * 8 / 1000 / duration_sec);
+            appendMsg(`Avg bitrate: ${bendwidth} kbps duration: ${duration_sec}s ts: ${chunk.timestamp}us fps:${output_counter/duration_sec}`);
+            total_chunk_size = 0;
+            output_counter = 0;
+            ts_mesure_point = chunk.timestamp;
+          }
+        },
+        error: (e) => {
+          console.log(e.message);
+        }
+      };           
+      encoder_config = {
+        codec: codec_string,
+        hardwareAcceleration: acceleration,
+        width: settings.width,
+        height: settings.height,
+        bitrate: bitrate,
+        bitrateMode: bitrateMode,
+        framerate: fps,
+        scalabilityMode : scalability,
+        latencyMode: latencyMode,
+      };   
+      if (codec_string.startsWith("avc"))
+        encoder_config.avc = { format: "annexb" };    
+      if (codec_string.startsWith("hvc"))
+        encoder_config.hevc = { format: "annexb" }; 
+
+      encoder = new VideoEncoder(init);
+      encoder.configure(encoder_config);
+      console.log("Encoder config: " + JSON.stringify(encoder_config))
+      
+      async function readFrame () {          
+        const result = await reader.read();
+        let frame = result.value;       
+        if (encoder.encodeQueueSize < 2) {
+          frame_counter++;
+          let insert_keyframe = false; 
+          encoder.encode(frame, { keyFrame: insert_keyframe }); 
+        }
+
+        frame.close();
+        setTimeout(readFrame, 0);
+      };
+                  
+      readFrame();      
+    }
+
+
+    function startDecodingAndRendering() {
+      let cnv = document.getElementById("dst");
+      let ctx = cnv.getContext("2d");
+      let ready_frames = [];
+      let underflow = true;
+      let time_base = 0;
+
+      async function renderFrame() {
+        if (ready_frames.length == 0) {
+          underflow = true;
+          return;
+        }
+        let frame = ready_frames.shift();
+        underflow = false;
+
+        ctx.drawImage(frame, 0, 0);        
+        frame.close();
+
+        // Immediately schedule rendering of the next frame
+        setTimeout(renderFrame, 0);
+        
+      }
+
+      function handleFrame(frame) {
+        ready_frames.push(frame);
+        if (underflow) {
+          underflow = false;
+          setTimeout(renderFrame, 0);
+        }
+      }
+
+      const init = {
+        output: handleFrame,
+        error: (e) => {
+          console.log(e.message);
+        }
+      };
+
+      let decoder = new VideoDecoder(init);
+      return decoder;
+    }
+
+   
+    function main() {
+      if (!("VideoEncoder" in window)) {
+        document.body.innerHTML = "<h1>WebCodecs API is not supported.</h1>";
+        return;
+      }
+
+      let decoder = startDecodingAndRendering();
+      captureAndEncode((chunk, md) => {
+        let config = md.decoderConfig;        
+        if (config) {
+          config.optimizeForLatency = true;
+          decoder.configure(config);
+        }        
+        decoder.decode(chunk);
+      });
+      document.getElementById("start").style.visibility = 'hidden';
+      document.getElementById("reconfigure").style.visibility = '';
+    }
+
+  </script>
+
+</body>
+
+</html>

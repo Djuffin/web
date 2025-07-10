@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>I look just like the tab next to me :)</title>
+    <style>
+        video {
+          object-fit: fill;
+          border: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: 100%;
+          height: 100%;
+        }
+        div {
+            font-family: cursive;
+            font-size: 40pt;
+        }
+    </style>
+    <script>
+        async function feedFrame() {
+          const width = 50;
+          const height = 50;
+          const dataSize = width * height * 4;
+          let data = new ArrayBuffer(dataSize);
+          const frameOptions = {
+            format: "RGBX",
+            codedWidth: width,
+            codedHeight: height,
+            timestamp: 0
+          };
+          let frame = new VideoFrame(data, frameOptions);
+
+          const video = document.getElementById('output');
+          const streamGenerator = new MediaStreamTrackGenerator('video');
+          const streamWriter = streamGenerator.writable.getWriter();
+          await streamWriter.ready;
+
+          video.srcObject = new MediaStream([streamGenerator]);
+          video.addEventListener("loadstart", (event) => {
+            streamWriter.write(frame);
+          });
+        }
+        window.onload = feedFrame;
+    </script>
+</head>
+<body>
+    <video autoplay muted id="output"></video>
+    <div>
+        Please switch to another tab and back.
+    </div>
+</body>
+</html>

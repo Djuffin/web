@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<!--
+The most basic GPU smoke test for WebCodecs: Accelerated VideoEncoder encodes
+several frames and accelerated VideoDecoder needs to successfully decode them.
+-->
+<html>
+
+<head>
+  <title>Encode, decode, render test</title>
+  <script src="webcodecs_common.js"></script>
+  <script type="text/javascript">
+    'use strict';
+    function showFrameForDebug(frame) {
+      const cnv = document.createElement('canvas');
+      cnv.width = frame.codedWidth;
+      cnv.height = frame.codedHeight;
+      document.body.appendChild(cnv);
+      var ctx = cnv.getContext('2d');
+      ctx.drawImage(frame, 0, 0);
+    }
+    
+    let encodedByteStream =  {
+      buffer: new ArrayBuffer(3 * 1024 * 1024),
+      offset: 0        
+    }
+    
+    function appendToByteStream(chunk) {
+      let view = new DataView(encodedByteStream.buffer, encodedByteStream.offset);
+      if (chunk.byteLength > view.byteLength)
+        return;
+      chunk.copyTo(view);
+      encodedByteStream.offset += chunk.byteLength;
+    }     
+    
+    function byteStreamToBase64() {
+      const bytes = new Uint8Array(encodedByteStream.buffer, 0, encodedByteStream.offset);
+      const binString = Array.from(bytes, (byte) =>
+        String.fromCharCode(byte),
+      ).join("");
+      return window.btoa(binString);
+    }    
+
+    async function main(arg) {
+      const width = 640;
+      const height = 480;
+      const frames_to_encode = 32;
+      let frames_encoded = 0;
+      let frames_decoded = 0;
+      let errors = 0;
+
+      const encoder_config = {
+        codec: arg.codec,
+        hardwareAcceleration: arg.acceleration,
+        width: width,
+        height: height,
+        bitrate: 500000,
+        framerate: 24
+      };
+      if (arg.codec.startsWith('avc1')) {
+        encoder_config.avc = { format: 'annexb' };
+      } else if (arg.codec.startsWith('hvc1')) {
+        encoder_config.hevc = { format: 'annexb' };
+      }
+
+      TEST.log('Starting test with arguments: ' + JSON.stringify(arg));
+      let supported = false;
+      try {
+        supported = (await VideoEncoder.isConfigSupported(encoder_config)).supported;
+      } catch (e) {}
+      if (!supported) {
+        TEST.skip('Unsupported codec: ' + arg.codec);
+        return;
+      }
+
+      let decoder = new VideoDecoder({
+        output(frame) {
+          if (TEST.finished) {
+            return;
+          }
+          let dots = frames_decoded;
+          // Check that we have intended number of dots and no more.
+          // Completely black frame shouldn't pass the test.
+          // Only count dots for sources that can actually pain them.
+          TEST.log("Got frame with ts: " + frame.timestamp);
+          showFrameForDebug(frame);
+          if (['offscreen', 'arraybuffer'].includes(arg.source_type)) {
+            if(!validateBlackDots(frame, dots) ||
+              validateBlackDots(frame, dots + 1)) {              
+              TEST.reportFailure(
+                  `Unexpected dot count ts:${frame.timestamp} dots:${dots}`);              
+              TEST.log('Full corrupted data: ' + byteStreamToBase64());              
+            }
+          }
+          frames_decoded++;
+          frame.close();
+        },
+        error(e) {
+          errors++;
+          TEST.log('Full corrupted data: ' + byteStreamToBase64());
+          TEST.log(e);
+        }
+      });
+
+      let timestamps = [];
+
+      const encoder_init = {
+        output(chunk, metadata) {
+          let config = metadata.decoderConfig;
+          if (config) {
+            decoder.configure(config);
+          }
+          
+          appendToByteStream(chunk);
+          
+          decoder.decode(chunk);
+          frames_encoded++;
+
+          let expected_timestamp = timestamps.shift();
+          TEST.assert(
+              chunk.timestamp == expected_timestamp,
+              `EncodedVideoChunk timestamp mismatch. Expected: ${
+                  expected_timestamp} got ${chunk.timestamp}`);
+        },
+        error(e) {
+          errors++;
+          TEST.log("Encoding error:" + e.toString());
+        }
+      };
+
+      let encoder = new VideoEncoder(encoder_init);
+      encoder.configure(encoder_config);
+
+      let source = await createFrameSource(arg.source_type, width, height);
+      if (!source) {
+        TEST.skip('Unsupported source: ' + arg.source_type);
+        return;
+      }
+
+      for (let i = 0; i < frames_to_encode; i++) {
+        let frame = await source.getNextFrame();
+        let keyframe = (i % 10 == 0);
+        timestamps.push(frame.timestamp);
+        encoder.encode(frame, { keyFrame: keyframe });
+        frame.close();
+
+        await waitForNextFrame();
+      }
+      await encoder.flush();
+      await decoder.flush();
+      encoder.close();
+      decoder.close();
+      source.close();
+
+      TEST.assert(
+        frames_encoded == frames_to_encode,
+        'frames_encoded mismatch: ' + frames_encoded);
+      TEST.assert(
+        frames_decoded == frames_to_encode,
+        'frames_decoded mismatch: ' + frames_decoded);
+      TEST.assert(
+        errors == 0, 'Decoding or encoding errors occurred during the test');
+      TEST.log('Test completed');
+    }
+    addManualTestButton([{
+      'source_type': 'offscreen',
+      'codec': 'avc1.42001E',
+      'acceleration':'prefer-software'
+    },
+    {
+      'source_type': 'camera',
+      'codec': 'avc1.42001E',
+      'acceleration':'prefer-software'
+    },
+    {
+      'source_type': 'offscreen',
+      'codec': 'avc1.42001E',
+      'acceleration':'prefer-hardware'
+    },
+    {
+      'source_type': 'offscreen',
+      'codec': 'hvc1.1.6.L123.00',
+      'acceleration':'prefer-software'
+    },
+    {
+      'source_type': 'offscreen',
+      'codec': 'hvc1.1.6.L123.00',
+      'acceleration':'prefer-hardware'
+    },
+    {
+      'source_type': 'offscreen',
+      'codec': 'av01.0.04M.08',
+      'acceleration':'prefer-hardware'
+    }                    
+    ]);
+  </script>
+</head>
+
+<body>
+  <textarea style="width: 100%; height: 300px;" readonly></textarea>
+</body>
+
+</html>

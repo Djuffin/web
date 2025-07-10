@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>H.264 Annex B WebCodecs Player</title>
+    <style>
+        /* General Body Styles */
+        body {
+            font-family: sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            color: #E5E7EB; /* text-gray-200 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem; /* p-4 */
+            margin: 0;
+        }
+
+        /* Main Container */
+        .main-container {
+            width: 100%;
+            max-width: 56rem; /* max-w-4xl */
+            background-color: #1F2937; /* bg-gray-800 */
+            border-radius: 1rem; /* rounded-2xl */
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+            padding: 1.5rem; /* p-6 */
+        }
+        @media (min-width: 768px) {
+            .main-container {
+                padding: 2rem; /* md:p-8 */
+            }
+        }
+        .main-container > :not([hidden]) ~ :not([hidden]) {
+             margin-top: 1.5rem; /* space-y-6 */
+        }
+
+        /* Text and Headers */
+        .text-center {
+            text-align: center;
+        }
+        .header-title {
+            font-size: 1.875rem; /* text-3xl */
+            font-weight: 700; /* font-bold */
+            color: #FFFFFF; /* text-white */
+        }
+        @media (min-width: 768px) {
+            .header-title {
+                font-size: 2.25rem; /* md:text-4xl */
+            }
+        }
+        .header-subtitle {
+            color: #9CA3AF; /* text-gray-400 */
+            margin-top: 0.5rem; /* mt-2 */
+        }
+
+        /* Input and Status Area */
+        .input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem; /* gap-5 */
+            padding: 1rem; /* p-4 */
+            background-color: rgb(17 24 39 / 0.5); /* bg-gray-900/50 */
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        
+        .url-loader {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        #urlInput {
+            width: 100%;
+            background-color: #374151; /* bg-gray-700 */
+            border: 1px solid #4B5563; /* border-gray-600 */
+            color: #F3F4F6; /* text-gray-100 */
+            font-size: 0.875rem;
+            border-radius: 0.375rem; /* rounded-md */
+            padding: 0.5rem 0.75rem;
+        }
+        #urlInput::placeholder {
+            color: #9CA3AF; /* text-gray-400 */
+        }
+
+        #loadUrlBtn {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #FFFFFF;
+            background-color: #4338CA; /* bg-indigo-700 */
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 150ms;
+            white-space: nowrap;
+        }
+        #loadUrlBtn:hover {
+            background-color: #3730A3; /* hover:bg-indigo-800 */
+        }
+
+        .separator {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: #6B7280; /* text-gray-500 */
+            font-size: 0.75rem;
+        }
+        .separator::before, .separator::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #4B5563; /* border-gray-600 */
+        }
+        .separator:not(:empty)::before {
+            margin-right: .5em;
+        }
+        .separator:not(:empty)::after {
+            margin-left: .5em;
+        }
+
+
+        /* File Input Styling */
+        #fileInput {
+            display: block;
+            width: 100%;
+            font-size: 0.875rem; /* text-sm */
+            color: #D1D5DB; /* text-gray-300 */
+            cursor: pointer;
+        }
+        #fileInput::file-selector-button {
+            margin-right: 1rem; /* file:mr-4 */
+            padding: 0.5rem 1rem; /* file:py-2 file:px-4 */
+            border-radius: 9999px; /* file:rounded-full */
+            border: 0;
+            font-size: 0.875rem; /* file:text-sm */
+            font-weight: 600; /* file:font-semibold */
+            background-color: #6366F1; /* file:bg-indigo-500 */
+            color: #FFFFFF; /* file:text-white */
+            transition: background-color 150ms;
+        }
+        #fileInput::file-selector-button:hover {
+            background-color: #4F46E5; /* hover:file:bg-indigo-600 */
+        }
+        
+        /* Status Text */
+        #status {
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500; /* font-medium */
+            color: #9CA3AF; /* text-gray-400 */
+            text-align: center;
+        }
+
+        /* Canvas Container */
+        .canvas-container {
+            background-color: #000;
+            border-radius: 0.5rem; /* rounded-lg */
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+        }
+        #videoCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Compatibility Notice */
+        .hidden {
+            display: none;
+        }
+        #compatibility-notice {
+            text-align: center;
+            padding: 1rem; /* p-4 */
+            background-color: rgb(76 29 29 / 0.5); /* bg-red-900/50 */
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        #compatibility-notice .font-bold {
+            font-weight: 700;
+        }
+        #compatibility-notice .text-sm {
+            font-size: 0.875rem;
+        }
+        #compatibility-notice .text-red-300 {
+            color: #FCA5A5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="text-center">
+            <h1 class="header-title">H.264 WebCodecs Player</h1>
+            <p class="header-subtitle">Load a raw H.264 Annex B file from a URL or a local file.</p>
+        </div>
+
+        <!-- Input and Status -->
+        <div class="input-area">
+            <div class="url-loader">
+                 <input type="url" id="urlInput" placeholder="Enter H.264 video URL..." value="https://cdn.glitch.global/8bd7a62b-0394-42ca-adb5-9107d5ef486a/al_android_stream.h264?v=1751923253584">
+                 <button id="loadUrlBtn">Load</button>
+            </div>
+            <div class="separator">OR</div>
+            <input type="file" id="fileInput" accept=".h264,.264,video/H264" />
+            <p id="status">Ready</p>
+        </div>
+        
+        <!-- Canvas for Video Rendering -->
+        <div class="canvas-container">
+            <canvas id="videoCanvas"></canvas>
+        </div>
+        
+        <!-- Browser Compatibility Notice -->
+        <div id="compatibility-notice" class="hidden">
+            <p class="font-bold">Browser Not Supported</p>
+            <p class="text-sm text-red-300">The WebCodecs API is not available in your browser. Please try a recent version of Chrome, Edge, or Opera.</p>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const urlInput = document.getElementById('urlInput');
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const compatibilityNotice = document.getElementById('compatibility-notice');
+
+        // Check for WebCodecs API support
+        if (typeof window.VideoDecoder === 'undefined') {
+            compatibilityNotice.classList.remove('hidden');
+        }
+
+        // --- Event listener for local file selection ---
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusEl.textContent = 'Reading file...';
+            const fileBuffer = await file.arrayBuffer();
+            const videoData = new Uint8Array(fileBuffer);
+            await startDecoding(videoData);
+        });
+        
+        // --- Event listener for URL loading ---
+        loadUrlBtn.addEventListener('click', async () => {
+            const url = urlInput.value;
+            if (!url) {
+                statusEl.textContent = "Please enter a URL.";
+                return;
+            }
+            try {
+                statusEl.textContent = `Fetching file from URL...`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const fileBuffer = await response.arrayBuffer();
+                const videoData = new Uint8Array(fileBuffer);
+                await startDecoding(videoData);
+            } catch (err) {
+                console.error("Fetch error:", err);
+                statusEl.textContent = `Error fetching file: ${err.message}`;
+            }
+        });
+
+
+        /**
+         * Main decoding function. Takes video data as a Uint8Array
+         * and decodes it frame by frame.
+         * @param {Uint8Array} videoData The raw H.264 data.
+         */
+        async function startDecoding(videoData) {
+            // --- Reset Canvas and Status ---
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            statusEl.textContent = 'Initializing Decoder...';
+            
+            // --- 1. Initialize VideoDecoder ---
+            const decoder = new VideoDecoder({
+                output: (frame) => {
+                    if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
+                        canvas.width = frame.codedWidth;
+                        canvas.height = frame.codedHeight;
+                    }
+                    ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+                    frame.close();
+                },
+                error: (err) => {
+                    console.error('VideoDecoder error:', err);
+                    statusEl.textContent = `Error: ${err.message}`;
+                },
+            });
+
+            // --- 2. Configure the Decoder ---
+            try {
+                const config = {
+                    codec: 'avc1.42E01E', 
+                    //hardwareAcceleration: 'prefer-hardware',
+                };
+                const { supported } = await VideoDecoder.isConfigSupported(config);
+                if (!supported) {
+                   statusEl.textContent = 'Error: H.264 decoding is not supported.';
+                   return;
+                }
+                decoder.configure(config);
+            } catch (err) {
+                 console.error('Decoder configuration error:', err);
+                 statusEl.textContent = `Error: ${err.message}`;
+                 return;
+            }
+            
+            statusEl.textContent = 'Parsing NAL units...';
+            const nalUnits = splitNalUnits(videoData);
+
+            if(nalUnits.length === 0) {
+                statusEl.textContent = 'Error: No NAL units found in the file.';
+                return;
+            }
+            
+            // --- 3. Find first IDR and group initial NALs ---
+            const firstIdrIndex = nalUnits.findIndex(nal => (nal[4] & 0x1F) === 5);
+
+            if (firstIdrIndex === -1) {
+                statusEl.textContent = 'Error: No IDR frame found in the stream.';
+                return;
+            }
+            
+            statusEl.textContent = `Decoding ${nalUnits.length} NAL units...`;
+            
+            // --- 4. Decode first chunk (SPS/PPS + IDR) ---
+            const initialNals = nalUnits.slice(0, firstIdrIndex + 1);
+            const initialChunkData = concatenateNals(initialNals);
+
+            let timestamp = 0;
+            const frameDuration = 1_000_000 / 30; // Assume 30 fps, in microseconds
+
+            const firstChunk = new EncodedVideoChunk({
+                type: 'key',
+                timestamp: timestamp,
+                duration: frameDuration,
+                data: initialChunkData,
+            });
+            decoder.decode(firstChunk);
+            timestamp += frameDuration;
+
+            // --- 5. Decode remaining NAL units ---
+            const remainingNals = nalUnits.slice(firstIdrIndex + 1);
+            for (const nalUnit of remainingNals) {
+                 if (decoder.state !== 'configured') {
+                    console.warn('Decoder not configured, skipping NAL unit.');
+                    continue;
+                }
+                
+                const nalType = nalUnit[4] & 0x1F;
+                if (nalType < 1 || nalType > 5) {
+                     continue;
+                }
+
+                const chunkType = nalType === 5 ? 'key' : 'delta';
+                const chunk = new EncodedVideoChunk({
+                    type: chunkType,
+                    timestamp: timestamp,
+                    duration: frameDuration,
+                    data: nalUnit,
+                });
+                decoder.decode(chunk);
+                timestamp += frameDuration;
+            }
+            
+            statusEl.textContent = 'Flushing decoder...';
+            await decoder.flush();
+            statusEl.textContent = 'Playback finished.';
+        }
+        
+        /**
+         * Takes an array of NAL units and concatenates them.
+         */
+        function concatenateNals(nals) {
+            let totalLength = 0;
+            for (const nal of nals) {
+                totalLength += nal.length;
+            }
+            const buffer = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const nal of nals) {
+                buffer.set(nal, offset);
+                offset += nal.length;
+            }
+            return buffer;
+        }
+
+        /**
+         * Parses an Annex B stream and extracts individual NAL units,
+         * preserving the start codes.
+         */
+        function splitNalUnits(data) {
+            const nalUnits = [];
+            const startCodePositions = [];
+            
+            for (let i = 0; i < data.length - 3; i++) {
+                if (data[i] === 0 && data[i + 1] === 0) {
+                     if (data[i + 2] === 1) { // 3-byte start code
+                        startCodePositions.push(i);
+                     } else if (data[i + 2] === 0 && data[i + 3] === 1) { // 4-byte start code
+                        startCodePositions.push(i);
+                        i++; // Skip the extra zero
+                     }
+                }
+            }
+
+            if (startCodePositions.length === 0) {
+                 console.warn("No NAL unit start codes found in the file.");
+                 return [];
+            }
+            
+            for (let i = 0; i < startCodePositions.length; i++) {
+                const start = startCodePositions[i];
+                const end = (i + 1 < startCodePositions.length) ? startCodePositions[i + 1] : data.length;
+                nalUnits.push(data.subarray(start, end));
+            }
+            
+            return nalUnits;
+        }
+    </script>
+</body>
+</html>

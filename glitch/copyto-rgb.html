@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<title>Convert frames to RGB</title>
+<script>
+'use strict';
+
+function compareColors(actual, expected, tolerance, msg) {
+  let channel = ['R', 'G', 'B', 'A'];
+  for (let i = 0; i < 4; i++) {
+    if (Math.abs(actual[i] - expected[i]) > tolerance) {
+      console.error(msg +
+       ` channel: ${channel[i]} actual: ${actual[i]} expected: ${expected[i]}`);
+    }
+  }
+}  
+  
+function rgb2yuv(r, g, b) {
+  let y = r * .299000 + g * .587000 + b * .114000
+  let u = r * -.168736 + g * -.331264 + b * .500000 + 128
+  let v = r * .500000 + g * -.418688 + b * -.081312 + 128
+
+  y = Math.round(y);
+  u = Math.round(u);
+  v = Math.round(v);
+  return {
+    y, u, v
+  }
+}
+
+function makeI420_frames() {
+  const kYellow = {r: 0xFF, g: 0xFF, b: 0x00};
+  const kRed = {r: 0xFF, g: 0x00, b: 0x00};
+  const kBlue = {r: 0x00, g: 0x00, b: 0xFF};
+  const kGreen = {r: 0x00, g: 0xFF, b: 0x00};
+  const kPink = {r: 0xFF, g: 0x78, b: 0xFF};
+  const kMagenta = {r: 0xFF, g: 0x00, b: 0xFF};
+  const kBlack = {r: 0x00, g: 0x00, b: 0x00};
+  const kWhite = {r: 0xFF, g: 0xFF, b: 0xFF};
+  const smpte170m = {
+    matrix: 'smpte170m',
+    primaries: 'smpte170m',
+    transfer: 'smpte170m',
+    fullRange: false
+  };
+  const bt709 = {
+    matrix: 'bt709',
+    primaries: 'bt709',
+    transfer: 'bt709',
+    fullRange: false
+  };
+
+  const result = [];
+  const init = {format: 'I420', timestamp: 0, codedWidth: 4, codedHeight: 4};
+  const colors =
+      [kYellow, kRed, kBlue, kGreen, kMagenta, kBlack, kWhite, kPink];
+  const data = new Uint8Array(24);
+  for (let colorSpace of [null, smpte170m, bt709]) {
+    init.colorSpace = colorSpace;
+    result.push(new VideoFrame(data, init));
+    for (let color of colors) {
+      color = rgb2yuv(color.r, color.g, color.b);
+      data.fill(color.y, 0, 16);
+      data.fill(color.u, 16, 20);
+      data.fill(color.v, 20, 24);
+      result.push(new VideoFrame(data, init));
+    }
+  }
+  return result;
+}  
+  
+async function testFrame(frame, colorSpace) {
+  const width = frame.visibleRect.width;
+  const height = frame.visibleRect.height;
+  const cnv = new OffscreenCanvas(width, height);
+  const ctx =
+      cnv.getContext('2d', {colorSpace: colorSpace, willReadFrequently: true});
+
+  // Read VideoFrame pixels via copyTo()
+  let imageData = ctx.createImageData(width, height);
+  let copy_to_buf = imageData.data.buffer;
+  let layout = null;
+  try {
+    const options = {
+      rect: {x: 0, y: 0, width: width, height: height},
+      format: 'RGBA',
+      colorSpace: colorSpace
+    };
+    layout = await frame.copyTo(copy_to_buf, options);
+  } catch (e) {
+    TEST.reportFailure(`copyTo() failure: ${e}`);
+    return;
+  }
+  if (layout.length != 1) {
+    TEST.skip('Conversion to RGB is not supported by the browser');
+    return;
+  }
+
+  // Read VideoFrame pixels via drawImage()
+  ctx.drawImage(frame, 0, 0, width, height, 0, 0, width, height);
+  imageData = ctx.getImageData(0, 0, width, height, {colorSpace: colorSpace});
+  let get_image_buf = imageData.data.buffer;
+
+  // Compare!
+  const tolerance = 1;
+  for (let i = 0; i < copy_to_buf.byteLength; i += 4) {
+    compareColors(
+        new Uint8Array(copy_to_buf, i, 4), new Uint8Array(get_image_buf, i, 4),
+        tolerance, `Mismatch at offset ${i}`);
+  }
+}  
+  
+async function main() {
+  for (let frame of makeI420_frames()) {
+    await testFrame(frame, 'srgb');
+    await testFrame(frame, 'display-p3');
+    frame.close();
+  }
+  console.log("done");
+}  
+ 
+
+function addManualTestButton(configs) {
+  document.addEventListener('DOMContentLoaded', _ => {
+    configs.forEach(config => {
+      const btn = document.createElement('button');
+      const label = document.createTextNode(
+          'Run test with config: ' + JSON.stringify(config));
+      btn.onclick = function() {
+        main(config);
+      };
+      btn.appendChild(label);
+      btn.style.margin = '5px';
+      document.body.appendChild(btn);
+    });
+  }, true);
+}  
+  
+addManualTestButton([{}])  ;
+</script>

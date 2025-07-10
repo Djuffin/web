@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">  
+  <title>VideoFrame Mirror</title>
+  <style>
+    #vPreview {
+      padding: 10px;
+      background: gold;
+    }
+    
+    #vMirror {
+      padding: 10px;
+      background: aqua;      
+    }
+  </style>
+</head>
+
+<body>
+
+    <div>      
+      <span>
+        Size: 
+        <select  id="dims">          
+          <option value='{ "width":640, "height":360 }'>640 x 360</option>
+          <option value='{ "width":480, "height":640 }'>480 x 640</option>
+          <option value='{ "width":720, "height":480 }'>720 x 480</option>
+          <option value='{ "width":1280, "height":720 }' selected>1280 x 720</option>
+        </select>
+      </span>
+      <span>
+        Algorithm: 
+        <select  id="algo">          
+          <option value='canvas' >Canvas</option>
+          <option value='buffer' selected>Buffer</option>
+        </select>
+      </span>      
+      <span>
+        Frame source: 
+        <select  id="source">          
+          <option value="camera" selected>Camera</option>
+          <option value="canvas-capture" >Canvas Capture</option>
+          <option value="canvas-copy">Canvas Copy</option>
+        </select>
+      </span> 
+
+      <button id='start' onclick="main()">Start</button>
+    </div>
+  
+  <video id="vPreview" autoplay muted></video>  
+  <video id="vMirror" autoplay muted></video>
+  
+  <script>
+    
+    async function processVideoFrameWithCanvas2(videoFrame) {
+      let width = videoFrame.visibleRect.width;
+      let height = videoFrame.visibleRect.height;
+      let offscreenCanvas = new OffscreenCanvas(width, height);
+      let ctx = offscreenCanvas.getContext('2d');
+      
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoFrame, width * -1, 0);
+      ctx.restore();
+
+      let newFrame = new VideoFrame(offscreenCanvas, {
+        timestamp: videoFrame.timestamp,
+      });
+      return newFrame;
+    }
+    
+    async function processVideoFrameWithCanvas(videoFrame) {
+      var bitmap = await createImageBitmap(videoFrame);
+      var offscreenCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      var ctx = offscreenCanvas.getContext('2d');
+      // This incantation flips the canvas around its center axis.
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(bitmap, bitmap.width * -1, 0);
+      ctx.restore();
+
+      var newFrame = new VideoFrame(offscreenCanvas, {
+        timestamp: videoFrame.timestamp || undefined,
+      });
+      return newFrame;
+    }    
+    
+    function getToElementSize(format, plane) {
+      switch (format) {
+        case "I420":
+        case "I420A":
+        case "I422":
+        case "I422A":
+        case "I444":
+        case "I444A":
+        case "RGBA":
+        case "RGBX":
+        case "BGRA":
+        case "BGRX":
+          return 1;
+        
+        case "NV12":
+          return plane == 0 ? 1 : 2;
+      }
+      throw "Unsupported pixel format: " + format;
+    }
+    
+    async function processVideoFrameWithBuffer(videoFrame) {
+      const bufferSize = videoFrame.allocationSize();
+      const buffer = new ArrayBuffer(bufferSize);
+      const layout = await videoFrame.copyTo(buffer);
+      const width = videoFrame.visibleRect?.width ?? videoFrame.codedWidth;
+      const height = videoFrame.visibleRect?.height ?? videoFrame.codedHeight;  
+      for (let i = 0; i < layout.length; i++) {
+        const end_offset = i < layout.length - 1 ? layout[i + 1].offset : bufferSize;
+        const stride = layout[i].stride;
+        if (getToElementSize(videoFrame.format, i) == 1) {
+          for (let offset = layout[i].offset; offset < end_offset; offset += stride) {          
+            new Uint8Array(buffer, offset, stride).reverse();      
+          } 
+        } else {
+          const elemntsNumber = stride / 2;
+          for (let offset = layout[i].offset; offset < end_offset; offset += stride) {
+            new Uint16Array(buffer, offset, elemntsNumber).reverse();
+          }
+        }
+      }
+      
+      return new VideoFrame(buffer, {
+        format: videoFrame.format,
+        timestamp: videoFrame.timestamp,
+        codedWidth: width,
+        codedHeight: height,
+        displayWidth: videoFrame.displayWidth,
+        displayHeight: videoFrame.displayHeight,
+        layout,
+        transfer: [buffer]
+      });
+    }      
+
+   function getMirroredMediaStream(mediaStream) {
+      let videoTrack = mediaStream.getVideoTracks()[0];
+      let videoTrackProcessor = new MediaStreamTrackProcessor({
+        track: videoTrack,
+      });
+      let videoStream = videoTrackProcessor.readable.pipeThrough(createTransformStream());
+
+      let videoTrackGenerator = new MediaStreamTrackGenerator({ kind: 'video' });
+      videoStream.pipeTo(videoTrackGenerator.writable);
+      return new MediaStream([videoTrackGenerator]);
+    }
+
+    let processing_times = [];
+    function createTransformStream() {
+      return new TransformStream({
+        transform: async (videoFrame, controller) => {
+          let func = (document.getElementById("algo").value == 'canvas')
+                      ? processVideoFrameWithCanvas 
+                      : processVideoFrameWithBuffer; 
+          let start_timestamp = performance.now();
+          let newFrame = await func(videoFrame);
+          let end_timestamp = performance.now();
+          processing_times.push(end_timestamp - start_timestamp);
+          if (processing_times.length > 30) {
+            const average_time = Math.ceil(processing_times.reduce((a, b) => a + b, 0) / processing_times.length);
+            processing_times = [];
+            console.log(`Average processing time:  ${average_time} ms`);
+          }
+          
+          videoFrame.close();
+         
+          controller.enqueue(newFrame);
+        },
+      });
+    }  
+    
+    async function setUpStreams() {
+      let previewVideo = document.getElementById("vPreview");
+      let mirrorVideo = document.getElementById("vMirror");
+      let dims = JSON.parse(document.getElementById('dims').value);   
+      let constraints = { audio: false, video:  { width: dims.width, height: dims.height, frameRate: 30 } };
+      let stream = await window.navigator.mediaDevices.getUserMedia(constraints);      
+      let track = stream.getTracks()[0]; 
+      let settings = track.getSettings();      
+      previewVideo.srcObject = stream.clone();
+      mirrorVideo.srcObject = getMirroredMediaStream(stream);
+    }
+    
+  
+    function main() {
+      setUpStreams();
+    }
+
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>WebCodecs Audio Echo</title>
+  </head>
+  <body>
+    <audio id="audio" ></audio>
+    <p>
+      This page reads sound from the microphone, encodes decodes and plays it via the audio element.  
+    </p>    
+    <script>
+      async function main() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        });
+
+        let base_timestamp = null;        
+        const track = stream.getTracks()[0];
+        const settings = track.getSettings();
+
+        const processor = new MediaStreamTrackProcessor(track);
+        const reader = processor.readable.getReader();
+
+        const generator = new MediaStreamTrackGenerator("audio");
+        const writer = generator.writable.getWriter();
+
+        const audio_player = document.getElementById("audio");
+        audio_player.srcObject = new MediaStream([generator]);
+        audio_player.play();
+        
+
+        const decoder = new AudioDecoder({
+          error(e) {
+            console.log(e);
+          },
+          async output(frame) {
+            await writer.write(frame);
+            frame.close();
+          },
+        });
+
+        const encoder = new AudioEncoder({
+          error(e) {
+            console.log(e);
+          },
+          output(chunk, md) {
+            let config = md.decoderConfig;
+            console.log("chunk timestamp: " + (chunk.timestamp / 1000000) + " s.");
+            if (config)
+              decoder.configure(config);
+            decoder.decode(chunk);
+          },
+        });
+
+        const config = {
+          numberOfChannels: settings.channelCount,
+          sampleRate: settings.sampleRate,
+          codec: "opus",
+          bitrate: 128000
+        };
+        
+        encoder.configure(config);
+
+        async function read () {
+          const result = await reader.read();
+          let frame = result.value;
+          let temp_buffer = new Float32Array(frame.allocationSize({planeIndex: 0}));
+          frame.copyTo(temp_buffer, {planeIndex: 0});
+          if (base_timestamp === null)
+            base_timestamp = frame.timestamp;
+          let rebased_frame = new AudioData({
+            format: frame.format,
+            numberOfChannels: frame.numberOfChannels,
+            numberOfFrames: frame.numberOfFrames,
+            sampleRate: frame.sampleRate,
+            timestamp: (frame.timestamp - base_timestamp), 
+            data: temp_buffer,
+            transfer: [temp_buffer.buffer]
+          });
+          frame = rebased_frame;
+          encoder.encode(frame);
+
+          setTimeout(read, 0);
+        };
+                  
+        read();
+      }   
+      main();
+        
+    </script>
+    
+  </body>
+</html>
