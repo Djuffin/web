@@ -1,260 +1,415 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <meta charset="UTF-8">
-    <title>Sepia Friends</title>
-    <style>
-        button {
-            border: solid;
-            margin: 15px 32px;
-            width: 150px;
-            text-align: center;
-            display: block;
-            font-size: 16px;
-        }
+  <meta charset="UTF-8">    
+  <title>WebCodecs Encode / Decode Test</title>
+  <style>
+    canvas {
+      padding: 5px;
+      background: gold;
+    }
+    
+    video {
+      padding: 5px;
+      background: blue;
+    }
 
-        canvas {
-            border: solid;
-        }
-    </style>
-    <script>
-
-        function saveByteArray(reportName, buffer) {
-            var blob = new Blob([buffer], {type: "video/mp4"});
-            var link = document.createElement('a');
-            link.href = window.URL.createObjectURL(blob);
-            var fileName = reportName;
-            link.download = fileName;
-            link.click();
-        };
-
-        function createDecodedStream(dataUri) {
-            const decoder_worker = new Worker("./decoder_worker.js");
-            const ready_frames = [];
-            let next_frame_ready_callback = null;
-            function onFrame(frame) {
-                if (!frame) {
-                    decoder_worker.terminate();
-                }
-                if (next_frame_ready_callback) {
-                    next_frame_ready_callback(frame);
-                    next_frame_ready_callback = null;
-                }
-                else
-                    ready_frames.push(frame);
-            }
-            decoder_worker.addEventListener("message", message => onFrame(message.data));
-            decoder_worker.postMessage({dataUri});
-
-            async function getNextFrame() {
-                if (ready_frames.length > 0)
-                    return ready_frames.shift();
-
-                let next_frame_promise = new Promise((resolve, reject) => {
-                    next_frame_ready_callback = resolve;
-                });
-                return next_frame_promise;
-            }
-            return getNextFrame;
-        }
-
-        class FrameProcessor {
-            constructor() {
-                this.frames = [];
-                this.worker = new Worker("./frame_processing.js");
-            }
-
-            async init(width, height, hide_faces) {
-                this.worker.postMessage({
-                    command : 'init',
-                    options : {width, height, hide_faces}
-                });
-                let init_complete_callback = null;
-                let init_complete_promise = new Promise((resolve, reject) => {
-                    init_complete_callback = resolve;
-                });
-
-                this.worker.onmessage = (e) => {
-                    init_complete_callback();
-                };
-                await init_complete_promise;
-                this.worker.onmessage = (e) => {
-                    this.onFrame(e.data);
-                };
-            }
-
-            async processFrame(frame) {
-                this.worker.postMessage({
-                    command : 'frame',
-                    frame: frame
-                }, [frame]);
-
-                let next_frame_promise = new Promise((resolve, reject) => {
-                    this.next_frame_ready_callback = resolve;
-                });
-                return next_frame_promise;
-            }
-
-            onFrame(frame) {
-                if (!frame) {
-                    this.close();
-                }
-                if (this.next_frame_ready_callback) {
-                    this.next_frame_ready_callback(frame);
-                    this.next_frame_ready_callback = null;
-                }
-            }
-
-            close() {
-                this.worker.terminate();
-            }
-        }
-
-        class Encoder {
-            constructor(width, height) {
-                this.frames = [];
-                this.worker = new Worker("./encoder_worker.js");
-                this.worker.onmessage = (e) => {
-                    this.done(e.data);
-                };
-                this.worker.postMessage({
-                    command : 'init',
-                    options : {width, height}
-                });
-            }
-
-            async processFrame(frame) {
-                this.worker.postMessage({
-                    command : 'frame',
-                    frame: frame
-                }, [frame]);
-            }
-
-            async flush() {
-                if (!this.worker)
-                    return;
-                this.worker.postMessage({
-                    command : 'flush'
-                });
-                let flush_promise = new Promise((resolve, reject) => {
-                    this.complete_callback = resolve;
-                });
-                return flush_promise;
-            }
-
-            done(encodedFile) {
-                this.worker.terminate();
-                this.worker = null;
-                if (this.complete_callback) {
-                    this.complete_callback();
-                    this.complete_callback = null;
-                }
-                saveByteArray("processed_video.mp4", encodedFile);
-            }
-        }
-
-        function say(text) {
-            let label = document.querySelector('#progress');
-            label.innerText = text;
-        }
-
-        async function main() {
-            const width = 1280;
-            const height = 720;
-            const frames_in_parallel = 3;
-            const processors = [];
-            const original_cnv = document.querySelector('#original_cnv');
-            let canvas_width = width / 2;
-            let canvas_height = height / 2;
-            original_cnv.width = canvas_width;
-            original_cnv.height = canvas_height;
-            const original_ctx = original_cnv.getContext('2d', {alpha : false});
-
-            const modified_cnv = document.querySelector('#modified_cnv');
-            modified_cnv.width = canvas_width;
-            modified_cnv.height = canvas_height;
-            const modified_ctx = modified_cnv.getContext('2d', {alpha : false});
-
-            say("Initializing...");
-            const hide_faces = (document.querySelector('#effect').value == 'true');
-            for (let i = 0; i < frames_in_parallel; i++) {
-                let processor = new FrameProcessor();
-                processors.push(processor);
-            }
-            await Promise.all(processors.map(p => p.init(width, height, hide_faces)));
-
-            say('Processing...');
-            let start_time = performance.now();
-            let frameReader = createDecodedStream('./friends.mp4');
-            let encoder = new Encoder(width, height);
-            let decoded_frame_counter = 0;
-            let processed_frame_counter = 0;
-
-            let end_of_stream = false;
-            while (!end_of_stream) {
-                let decoded_frames = [];
-
-                let i = 0;
-                for (i = 0; i < frames_in_parallel; i++) {
-                    let frame = await frameReader();
-                    if (!frame) {
-                        end_of_stream = true;
-                        break;
-                    }
-
-                    decoded_frame_counter++;
-                    decoded_frames.push(frame);
-                }
-
-                if (decoded_frames.length > 0)
-                    original_ctx.drawImage(decoded_frames[0], 0, 0, canvas_width, canvas_height);
-
-                i = 0;
-                let promises = [];
-                for (let frame of decoded_frames) {
-                    let processor = processors[i++];
-                    promises.push(processor.processFrame(frame));
-                }
-
-                let processed_frames = await Promise.all(promises);
-                processed_frames.sort((f1, f2) => { return f1.timestamp - f2.timestamp });
-
-                if (processed_frames.length > 0)
-                    modified_ctx.drawImage(processed_frames[0], 0, 0, canvas_width, canvas_height);
-
-                for (let processed_frame of processed_frames) {
-                    processed_frame_counter++;
-                    encoder.processFrame(processed_frame);
-                }
-            }
-
-            say('finishing encoding...');
-            await encoder.flush();
-            let end_time = performance.now();
-            for (let p of processors)
-                p.close();
-
-            say(`Done! Total time: ${Math.ceil((end_time - start_time) / 1000)}s Frames: ${processed_frame_counter} FPS: ${decoded_frame_counter / (end_time - start_time) * 1000}`);
-        }
-    </script>
-
+    button {
+      background-color: #555555;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      margin: 5px;
+      width: 150px;
+      text-align: center;
+      font-size: 16px;
+    }
+  </style>
 </head>
 
 <body>
-    <div>
-        <a href='./friends.mp4'>Original Video File</a>
-        <button onclick="main()">Start Processing</button>
-        Effect:
-        <select id='effect'>
-            <option value='false'>Sepia</option>
-            <option value='true'>Hide faces with tf.js and WebGPU</option>
+  <div>    
+    <div>     
+      <span>
+        Codec: 
+        <select id="codec">
+          <option value="vp8">VP8</option>
+          <option value="vp09.00.10.08">VP9</option>
+          <option value="avc1.424033">h264 baseline constrained</option>
+          <option value="avc1.420034" selected>h264 baseline</option>
+          <option value="avc1.640034">h264 high</option>
+          <option value="avc1.4d0034">h264 main</option>
+          <option value="avc1.580034">h264 extended</option>
+          <option value="hvc1.1.6.L123.00">h265</option>          
+          <option value="av01.0.04M.08">AV1 lvl4</option>
         </select>
-        <label id='progress'></label>
-        <div>
-            <canvas id='original_cnv'></canvas>
-            <canvas id='modified_cnv'></canvas>
-        </div>
+      </span>
+      <span>
+        Encoder: 
+        <select id="acceleration">          
+          <option value="no-preference" >No preference</option>
+          <option value="prefer-software" >Software</option>
+          <option value="prefer-hardware" selected>Hardware</option>
+        </select>
+      </span>
+      <span>
+        Bitrate: 
+        <select  id="bitrate">
+          <option value="0">0 kbps</option>
+          <option value="500000">500 kbps</option>
+          <option value="700000">700 kbps</option>
+          <option value="900000">900 kbps</option>
+          <option value="1000000">1000 kbps</option>
+          <option value="1300000">1300 kbps</option>
+          <option value="1500000" selected>1500 kbps</option>
+          <option value="2000000">2000 kbps</option>
+          <option value="2500000">2500 kbps</option>
+          <option value="3000000">3000 kbps</option>
+          <option value="4000000">4000 kbps</option>
+          <option value="5000000">5000 kbps</option> 
+          <option value="8000000">8000 kbps</option>
+          <option value="20000000">20 Mpbs</option>
+        </select>
+      </span>      
+      <span>
+        Size: 
+        <select  id="dims">          
+          <option value='{ "width":64, "height":64 }'>64 x 64</option>
+          <option value='{ "width":640, "height":360 }'>640 x 360</option>
+          <option value='{ "width":640, "height":480 }'>640 x 480</option>
+          <option value='{ "width":480, "height":640 }'>480 x 640</option>
+          <option value='{ "width":720, "height":480 }'>720 x 480</option>
+          <option value='{ "width":800, "height":600 }'>800 x 600</option>
+          <option value='{ "width":1280, "height":720 }' selected>1280 x 720</option>
+          <option value='{ "width":1920, "height":1088 }'>1920 x 1088</option>
+          <option value='{ "width":1920, "height":1280 }'>1920 x 1280</option>          
+        </select>
+      </span>
+      <span>
+        Scalabitity: 
+        <select id="scalability">
+          <option value="" selected>None</option>
+          <option value="L1T2">L1T2</option>
+          <option value="L1T3">L1T3</option>
+          <option value="L2T1">L2T1</option>
+          <option value="manual">manual</option>
+        </select>
+      </span>  
+      <span>
+        Frame source: 
+        <select  id="source">          
+          <option value="camera" >Camera</option>
+          <option value="canvas-capture" >Canvas Capture</option>
+          <option value="canvas-copy" selected>Canvas Copy</option>
+        </select>
+      </span> 
+      <div>
+        <textarea id="log" style="width: 80%; height: 300px;" readonly></textarea>
+      </div>
+      <button id="start" onclick="main()">Start</button>      
+      <button onclick="download()">Download</button>
+      <button onclick="ask_keyframe()">Keyframe</button>
     </div>
+    
+    
+    <canvas id="src" style="display:none"></canvas>   
+    <video id="vPreview" autoplay muted></video>        
+    <canvas id="dst"></canvas>   
+  </div>
+  
+  
+  <script>
+    let keep_going = true;
+    let force_keyframe = false;
+    
+    let ts_mesure_point = 0;
+    let total_chunk_size = 0;
+    const ts_to_start_time = new Map();
+
+    let encodedByteStream =  {
+      buffer: new ArrayBuffer(3 * 1024 * 1024),
+      offset: 0        
+    }
+    
+    function appendToByteStream(chunk) {
+      let view = new DataView(encodedByteStream.buffer, encodedByteStream.offset);
+      if (chunk.byteLength > view.byteLength)
+        return;
+      chunk.copyTo(view);
+      encodedByteStream.offset += chunk.byteLength;
+    }    
+    
+    function ask_keyframe() {
+      force_keyframe = true;
+      appendMsg('Asking for a keyframe');
+    }      
+    
+    function download() {
+      var blob = new Blob([encodedByteStream.buffer], {type: "octet/stream"});
+      var url  = window.URL.createObjectURL(blob);
+      window.location.assign(url);
+    }
+    
+    function appendMsg(msg) {
+      document.getElementById("log").value += (msg + "\n");
+    }
+    
+    function rnd(x) {
+      return Math.floor(Math.random() * x);
+    }
+    
+    function waitForNextFrame() {
+      return new Promise((resolve, _) => {
+        window.requestAnimationFrame(resolve);
+      });
+    }    
+    
+    // Draw pretty animation on the canvas
+    async function startDrawing(cnv) {
+      var ctx = cnv.getContext('2d');
+     
+      ctx.fillStyle = "white";
+      let width = cnv.width;
+      let height = cnv.height;
+      let cx = width / 2;
+      let cy = height / 2;
+      let r = Math.min(width, height) / 5;
+      ctx.fillRect(0, 0, width, height);
+      
+      function noise() {
+        for (let i = 0; i < 5; i++) {
+            let x = rnd(width); 
+            let y = rnd(height);
+            let w = 30;
+            let h = 30;
+            let a = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let b = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let c = 'rgba(' + rnd(255) + ',' + rnd(255) + ',' + rnd(255) + ',' + 1 + ')'
+            let gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+            gradient.addColorStop(0, a);
+            gradient.addColorStop(0.5, b);
+            gradient.addColorStop(1, c);
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, y, w, h);
+        }
+      }      
+      
+      ctx.font = '100px Helvetica';     
+      let drawOneFrame = function (time) {
+        const text = time.toString();
+        const size = ctx.measureText(text).width;     
+        let angle = Math.PI * 2 * (time / 5000);
+        let scale = 1 + 0.3 * Math.sin(Math.PI * 2 * (time / 7000));
+        ctx.save();
+        noise();
+
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.scale(scale, scale);       
+      
+        ctx.fillStyle = "hsl(" + (angle * 40 ) + ",80%,50%)";
+        ctx.fillRect(-size / 2, 10, size, 25);
+        
+        ctx.fillStyle = 'black';       
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 8;
+        ctx.strokeText(text, -size / 2, 0);
+        
+        ctx.fillStyle = 'white';
+        ctx.fillText(text, -size / 2, 0);        
+        
+        ctx.restore();        
+        window.requestAnimationFrame(drawOneFrame);
+      }
+      drawOneFrame(0);
+      await waitForNextFrame();
+    }
+    
+    async function captureAndEncode(processChunk) {
+      let video = document.getElementById("vPreview");
+      let frame_counter = 0;
+      let output_counter = 0;
+      let encoding_times_ms = [];
+      let bitrate = Number.parseInt(document.getElementById('bitrate').value);
+      let acceleration = document.getElementById('acceleration').value;
+      let codec_string = document.getElementById('codec').value;
+      let fps = 30;
+      let dims = JSON.parse(document.getElementById('dims').value);   
+      let scalability = document.getElementById('scalability').value;
+      let srcCnv = document.getElementById("src");
+      srcCnv.width = dims.width;
+      srcCnv.height = dims.height;
+      let dstCnv = document.getElementById("dst");
+      dstCnv.width = srcCnv.width;
+      dstCnv.height = srcCnv.height;            
+      let source_type = document.getElementById('source').value;
+      
+      let stream = null;
+      if (source_type == 'camera') {
+        let constraints = { audio: false, video:  { width: dims.width, height: dims.height, frameRate: fps } };
+        stream = await window.navigator.mediaDevices.getUserMedia(constraints);
+      } else if(source_type == 'canvas-capture' || source_type == 'canvas-copy') {
+        startDrawing(srcCnv);
+        stream = srcCnv.captureStream(fps);
+      } 
+      
+      let track = stream.getTracks()[0];
+      let settings = track.getSettings();
+      
+      fps = settings.frameRate;
+      appendMsg(`Set bitrate: ${bitrate} bps`);
+      appendMsg(`Set acceleration: ${acceleration}`);      
+      appendMsg(`Set frame rate: ${fps}`);      
+      video.srcObject = stream;
+      let media_processor = new MediaStreamTrackProcessor(track);
+      const reader = media_processor.readable.getReader();
+      
+      const init = {
+        output: (chunk, md) => {
+          let encoding_start_time_ms = ts_to_start_time.get(chunk.timestamp);
+          let encoding_duration_ms = encoding_start_time_ms ? (performance.now() - encoding_start_time_ms) : 0;
+          ts_to_start_time.delete(chunk.timestamp);
+          encoding_times_ms.push(encoding_duration_ms);
+          console.log(`Chunk timestamp: ${chunk.timestamp}`);
+                    
+          if (!md.svc || md.svc.temporalLayerId == 0) {
+            processChunk(chunk, md);
+            appendToByteStream(chunk);
+          } else {
+            console.log('drop layer' + md.svc.temporalLayerId);
+          }
+          
+          total_chunk_size += chunk.byteLength;          
+          output_counter++;
+          
+          if (chunk.type == "key")
+            appendMsg("Keyframe!" + " frame_counter: " + frame_counter);
+          if (ts_mesure_point == 0) {
+            ts_mesure_point = chunk.timestamp;
+          } 
+          let duration_sec = (chunk.timestamp - ts_mesure_point) / 1_000_000;
+          if (duration_sec > 3) {
+            let bendwidth = Math.round(total_chunk_size * 8 / 1000 / duration_sec);
+            const max_encoding_time = Math.ceil(encoding_times_ms.reduce((a, b) => Math.max(a, b), 0));
+            appendMsg(`Avg bitrate: ${bendwidth} kbps duration: ${duration_sec}s fps:${output_counter/duration_sec} max_encoding_time:${max_encoding_time}ms`);
+            if (max_encoding_time > 50) {         
+              encoding_times_ms = encoding_times_ms.filter(t => t > 50);
+              appendMsg(`Encoding times: ${JSON.stringify(encoding_times_ms)}`);
+            }
+            total_chunk_size = 0;
+            output_counter = 0;            
+            encoding_times_ms = [];
+            ts_mesure_point = chunk.timestamp;
+          }
+        },
+        error: (e) => {
+          console.log(e.message);
+        }
+      };           
+      const config = {
+        codec: codec_string,
+        hardwareAcceleration: acceleration,
+        width: settings.width,// - 64,
+        height: settings.height, // - 64,
+        bitrate: bitrate,
+        framerate: fps,
+        contentHint: (source_type == 'camera' ? "motion" : "detail"),
+        latencyMode: "realtime" // "quality"
+      };
+      if (scalability != '')
+        config.scalabilityMode = scalability;
+      if (codec_string.startsWith("avc"))
+        config.avc = { format: "annexb" };
+      if (codec_string.startsWith("hvc"))
+        config.hevc = { format: "annexb" };      
+      
+      console.log("Encoder config" + JSON.stringify(config));
+      let encoder = new VideoEncoder(init);
+      encoder.configure(config);
+      
+      async function readFrame () {          
+        let frame = null;
+        let timeout = 0
+        if (source_type == 'canvas-copy') {
+          frame = new VideoFrame(srcCnv, {timestamp : 1000 * performance.now()});
+          timeout = 1000 / fps;
+        } else {
+          const result = await reader.read();
+          frame = result.value;          
+        }
+       
+        
+        if (encoder.encodeQueueSize < 2) {
+          frame_counter++;
+          ts_to_start_time.set(frame.timestamp, performance.now());
+          console.log(`Encoding frame: ${frame.timestamp}`);
+          const encode_options = { keyFrame: force_keyframe };
+          force_keyframe = false;
+          if (scalability == "manual") {
+            const buffers = encoder.getAllFrameBuffers();
+            if (frame_counter % 10 == 0) {
+              encode_options.updateBuffer = buffers[0];
+            } else {
+              encode_options.referenceBuffers = [buffers[0]];
+            }
+          }
+          encoder.encode(frame, encode_options); 
+        }        
+        frame.close();
+        
+        setTimeout(readFrame, timeout);
+      };
+                  
+      readFrame();      
+    }
+
+
+    function startDecodingAndRendering() {
+      let cnv = document.getElementById("dst");
+      let ctx = cnv.getContext("2d");
+
+      function renderFrame(frame) {
+        ctx.drawImage(frame, 0, 0);
+        frame.close();        
+      }
+
+      const init = {
+        output: renderFrame,
+        error: (e) => {
+          console.log(e.message);
+        }
+      };
+
+      let decoder = new VideoDecoder(init);
+      return decoder;
+    }
+
+   
+    function main() {
+      if (!("VideoEncoder" in window)) {
+        document.body.innerHTML = "<h1>WebCodecs API is not supported.</h1>";
+        return;
+      }
+
+      let decoder = startDecodingAndRendering();
+      captureAndEncode((chunk, md) => {
+        let config = md.decoderConfig;        
+        if (config) {
+          config.optimizeForLatency = true;
+          //config.hardwareAcceleration = 'prefer-software';
+          config.hardwareAcceleration = 'no-preference';
+          decoder.configure(config);
+          console.log("Decoder config" + JSON.stringify(config));
+        }        
+        decoder.decode(chunk);
+      });
+      document.getElementById("start").style.visibility = 'hidden';
+    }
+
+  </script>
+
 </body>
 
 </html>
