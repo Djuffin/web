@@ -83,7 +83,7 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
           // Only count dots for sources that can actually pain them.
           TEST.log("Got frame with ts: " + frame.timestamp);
           showFrameForDebug(frame);
-          if (['offscreen', 'arraybuffer'].includes(arg.source_type)) {
+          if (['offscreen', 'arraybuffer', 'hw_decoder'].includes(arg.source_type)) {
             if(!validateBlackDots(frame, dots) ||
               validateBlackDots(frame, dots + 1)) {
               TEST.reportFailure(
