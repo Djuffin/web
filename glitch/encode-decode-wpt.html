@@ -18,27 +18,27 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
       var ctx = cnv.getContext('2d');
       ctx.drawImage(frame, 0, 0);
     }
-    
+
     let encodedByteStream =  {
       buffer: new ArrayBuffer(3 * 1024 * 1024),
-      offset: 0        
+      offset: 0
     }
-    
+
     function appendToByteStream(chunk) {
       let view = new DataView(encodedByteStream.buffer, encodedByteStream.offset);
       if (chunk.byteLength > view.byteLength)
         return;
       chunk.copyTo(view);
       encodedByteStream.offset += chunk.byteLength;
-    }     
-    
+    }
+
     function byteStreamToBase64() {
       const bytes = new Uint8Array(encodedByteStream.buffer, 0, encodedByteStream.offset);
       const binString = Array.from(bytes, (byte) =>
         String.fromCharCode(byte),
       ).join("");
       return window.btoa(binString);
-    }    
+    }
 
     async function main(arg) {
       const width = 640;
@@ -85,10 +85,10 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
           showFrameForDebug(frame);
           if (['offscreen', 'arraybuffer'].includes(arg.source_type)) {
             if(!validateBlackDots(frame, dots) ||
-              validateBlackDots(frame, dots + 1)) {              
+              validateBlackDots(frame, dots + 1)) {
               TEST.reportFailure(
-                  `Unexpected dot count ts:${frame.timestamp} dots:${dots}`);              
-              TEST.log('Full corrupted data: ' + byteStreamToBase64());              
+                  `Unexpected dot count ts:${frame.timestamp} dots:${dots}`);
+              TEST.log('Full corrupted data: ' + byteStreamToBase64());
             }
           }
           frames_decoded++;
@@ -109,9 +109,9 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
           if (config) {
             decoder.configure(config);
           }
-          
+
           appendToByteStream(chunk);
-          
+
           decoder.decode(chunk);
           frames_encoded++;
 
@@ -164,21 +164,21 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
     addManualTestButton([{
       'source_type': 'offscreen',
       'codec': 'avc1.42001E',
-      'acceleration':'prefer-software'
+      'acceleration':'prefer-hardware'
     },
     {
       'source_type': 'camera',
       'codec': 'avc1.42001E',
-      'acceleration':'prefer-software'
+      'acceleration':'prefer-hardware'
     },
     {
-      'source_type': 'offscreen',
+      'source_type': 'hw_decoder',
       'codec': 'avc1.42001E',
       'acceleration':'prefer-hardware'
     },
     {
       'source_type': 'offscreen',
-      'codec': 'hvc1.1.6.L123.00',
+      'codec': 'avc1.42001E',
       'acceleration':'prefer-software'
     },
     {
@@ -190,7 +190,7 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
       'source_type': 'offscreen',
       'codec': 'av01.0.04M.08',
       'acceleration':'prefer-hardware'
-    }                    
+    }
     ]);
   </script>
 </head>
