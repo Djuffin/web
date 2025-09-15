@@ -131,12 +131,17 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
     addManualTestButton([{
       'source_type': 'offscreen',
       'codec': 'avc1.42001E',
-      'acceleration':'prefer-software'
+      'acceleration':'prefer-hardware'
     },
     {
       'source_type': 'camera',
       'codec': 'avc1.42001E',
-      'acceleration':'prefer-software'
+      'acceleration':'prefer-hardware'
+    },
+    {
+      'source_type': 'capture',
+      'codec': 'avc1.42001E',
+      'acceleration':'prefer-hardware'
     },
     {
       'source_type': 'hw_decoder',
@@ -157,6 +162,7 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
 </head>
 
 <body>
+  <textarea style="width: 100%; height: 300px;" readonly></textarea>
   <canvas id="debug_cnv" width="640" height="480"></canvas>
 </body>
 
