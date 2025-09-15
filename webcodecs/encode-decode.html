@@ -54,7 +54,7 @@ several frames and accelerated VideoDecoder needs to successfully decode them.
           // Check that we have intended number of dots and no more.
           // Completely black frame shouldn't pass the test.
           // Only count dots for sources that can actually pain them.
-          if (['offscreen', 'arraybuffer'].includes(arg.source_type)) {
+          if (['offscreen', 'arraybuffer', 'hw_decoder'].includes(arg.source_type)) {
             if(!validateBlackDots(frame, dots) ||
               validateBlackDots(frame, dots + 1)) {
               showFrameForDebug(frame);
