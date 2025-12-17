@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Demo with WebCodecs</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .view-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        video, canvas {
+            background-color: #000;
+            max-width: 100%;
+            border: 2px solid #333;
+            border-radius: 4px;
+        }
+        h3 {
+            margin-bottom: 5px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Camera Stream & Frame Processing</h1>
+
+    <div class="controls">
+        <label for="sourceSelect">Source: </label>
+        <select id="sourceSelect">
+            <option value="camera">Camera</option>
+            <option value="canvas">Animated Canvas</option>
+        </select>
+        <label for="resolution">Resolution: </label>
+        <select id="resolution">
+            <option value='{"width": 640, "height": 480}'>640 x 480 (VGA)</option>
+            <option value='{"width": 1280, "height": 720}'>1280 x 720 (HD)</option>
+            <option value='{"width": 1920, "height": 1080}'>1920 x 1080 (FHD)</option>
+        </select>
+        <button id="startBtn">Start</button>
+    </div>
+
+    <div class="container">
+        <div class="view-box">
+            <h3>Original Stream (Video Element)</h3>
+            <video id="videoPreview" autoplay muted playsinline></video>
+        </div>
+        <div class="view-box">
+            <h3>Processed Frames (Canvas)</h3>
+            <canvas id="canvasOutput"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const resolutionSelect = document.getElementById('resolution');
+        const sourceSelect = document.getElementById('sourceSelect');
+        const videoPreview = document.getElementById('videoPreview');
+        const canvasOutput = document.getElementById('canvasOutput');
+        const ctx = canvasOutput.getContext('2d');
+
+        // Source canvas for animation (hidden or in-memory)
+        const sourceCanvas = document.createElement('canvas');
+
+        let currentStream = null;
+        let reader = null;
+        let isRunning = false;
+        let animationId = null;
+        let loadCount = 0;
+
+        function startAnimation(width, height) {
+            sourceCanvas.width = width;
+            sourceCanvas.height = height;
+            const sCtx = sourceCanvas.getContext('2d');
+            let frame = 0;
+            
+            function draw() {
+                frame++;
+                // Background
+                sCtx.fillStyle = '#222';
+                sCtx.fillRect(0, 0, width, height);
+                
+                // Dynamic Pattern
+                sCtx.lineWidth = 8;
+                for(let i = 0; i < 5; i++) {
+                   sCtx.strokeStyle = `hsl(${(frame * 2 + i*50) % 360}, 70%, 60%)`;
+                   sCtx.beginPath();
+                   sCtx.arc(width/2, height/2, (i+1) * 30 + Math.sin(frame * 0.05) * 20, 0, Math.PI * 2);
+                   sCtx.stroke();
+                }
+
+                // Moving Box
+                sCtx.fillStyle = '#ff5722';
+                sCtx.fillRect((frame * 5) % width, height - 100, 80, 80);
+
+                // Text
+                sCtx.fillStyle = 'white';
+                sCtx.font = '30px monospace';
+                sCtx.fillText(`Frame: ${frame}`, 20, 50);
+                sCtx.fillText(new Date().toLocaleTimeString(), 20, 90);
+
+                animationId = requestAnimationFrame(draw);
+            }
+            if (animationId) cancelAnimationFrame(animationId);
+            draw();
+        }
+
+        function stopAnimation() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        async function startStream() {
+            const myCount = ++loadCount;
+
+            // Stop previous stream if running
+            isRunning = false;
+            if (reader) {
+                await reader.cancel();
+                reader = null;
+            }
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+            stopAnimation();
+
+            const selectedRes = JSON.parse(resolutionSelect.value);
+            const source = sourceSelect.value;
+            let stream = null;
+
+            try {
+                if (source === 'camera') {
+                    const constraints = {
+                        audio: false,
+                        video: {
+                            width: { ideal: selectedRes.width },
+                            height: { ideal: selectedRes.height }
+                        }
+                    };
+                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                } else {
+                    startAnimation(selectedRes.width, selectedRes.height);
+                    stream = sourceCanvas.captureStream(30); // 30 FPS
+                }
+
+                // Race condition check: if a new load started, abort this one
+                if (loadCount !== myCount) {
+                    stream.getTracks().forEach(track => track.stop());
+                    if (source === 'canvas') stopAnimation();
+                    return;
+                }
+
+                currentStream = stream;
+                
+                // Set up video preview
+                videoPreview.srcObject = stream;
+                
+                // Wait for video metadata to load to set canvas size and start processing
+                videoPreview.onloadedmetadata = () => {
+                    if (loadCount !== myCount) return;
+                    canvasOutput.width = videoPreview.videoWidth;
+                    canvasOutput.height = videoPreview.videoHeight;
+                    processStream(stream);
+                };
+
+            } catch (err) {
+                console.error("Error accessing stream:", err);
+                alert("Could not access stream. Please check permissions or source.");
+            }
+        }
+
+        async function processStream(stream) {
+            const track = stream.getVideoTracks()[0];
+            const processor = new MediaStreamTrackProcessor({ track: track });
+            reader = processor.readable.getReader();
+            isRunning = true;
+
+            try {
+                while (isRunning) {
+                    const { done, value: frame } = await reader.read();
+                    if (done) break;
+
+                    if (frame) {
+                        // Ensure canvas dimensions match the frame
+                        if (canvasOutput.width !== frame.displayWidth || canvasOutput.height !== frame.displayHeight) {
+                            canvasOutput.width = frame.displayWidth;
+                            canvasOutput.height = frame.displayHeight;
+                        }
+
+                        // Draw frame to canvas
+                        ctx.drawImage(frame, 0, 0);
+                        
+                        // IMPORTANT: Close the frame to release memory
+                        frame.close();
+                    }
+                }
+            } catch (err) {
+                console.error("Error reading frames:", err);
+            }
+        }
+
+        startBtn.addEventListener('click', startStream);
+    </script>
+</body>
+</html>
