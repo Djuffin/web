@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fractal Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Hide scrollbars */
+            background-color: black;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Make the canvas fill the browser window
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // "t" represents time (in seconds)
+    let t = 0;
+
+    function draw() {
+        // 1. Clear the screen with black at the start of every frame
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 2. Define the center of the screen
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // 3. Reset starting variables for the loop
+        // In the original, X, Y, and i all start at 30,000 (3e4)
+        let i = 30000;
+        let X = 30000;
+        let Y = 30000;
+
+        // 4. The Loop: Run 30,000 iterations to draw the points
+        while (i > 0) {
+            i--; // Decrement the counter
+
+            // 'j' creates the "groups" or spiral arms.
+            // The ">> 9" is a bitwise shift, effectively dividing i by 512.
+            const j = i >> 9;
+
+            // --- THE MATH (Chaos Logic) ---
+
+            // Calculate intermediate angles 'a' and 'b'
+            // These determine how the next point relates to the previous one
+            const a = Y + j;
+            const b = X + (t / 4) + (j * 7);
+
+            // Update X and Y positions using Sine and Cosine
+            // This feedback loop creates the fractal shape
+            X = Math.cos(a) + Math.cos(b);
+            Y = Math.sin(a) + Math.sin(b);
+
+            // --- THE DRAWING ---
+
+            // Calculate Color:
+            // Hue changes based on the loop index 'i' (creates the rainbow)
+            const hue = i >> 4; // Divide by 16 to stretch the color gradient
+            ctx.fillStyle = `hsla(${hue}, 99%, 50%, 1)`;
+
+            // Plot the point:
+            // We scale X and Y by 250 to make the shape big enough to see,
+            // then add centerX/centerY to move it to the middle of the screen.
+            ctx.fillRect(centerX + X * 250, centerY + Y * 250, 2, 2);
+        }
+
+        // 5. Advance time slightly for the next frame
+        t += 1 / 60;
+
+        // 6. Request the browser to run this function again (animation loop)
+        requestAnimationFrame(draw);
+    }
+
+    // Start the animation
+    draw();
+
+    // Optional: Update canvas size if user resizes the window
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+
+</script>
+
+</body>
+</html>
