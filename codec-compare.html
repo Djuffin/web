@@ -308,6 +308,7 @@
         },
         error: (e) => {
           console.log(e.message);
+          appendMsg("Encoder error: " + e.message);
         }
       };
       const config = {
