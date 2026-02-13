@@ -84,6 +84,8 @@
           <option value='{ "width":1280, "height":720 }' selected>1280 x 720</option>
           <option value='{ "width":1920, "height":1088 }'>1920 x 1088</option>
           <option value='{ "width":1920, "height":1280 }'>1920 x 1280</option>
+          <option value='{ "width":2560, "height":1440 }'>2560 x 1440</option>
+          <option value='{ "width":3840, "height":2160 }'>3840 x 2160</option>
         </select>
       </span>
       <span>
@@ -379,6 +381,7 @@
         output: renderFrame,
         error: (e) => {
           console.log(e.message);
+          appendMsg("Decoder error: " + e.message);
         }
       };
 
