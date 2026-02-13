@@ -329,6 +329,30 @@
         config.hevc = { format: "annexb" };
 
       console.log("Encoder config" + JSON.stringify(config));
+
+      try {
+        const encoderSupport = await VideoEncoder.isConfigSupported(config);
+        if (!encoderSupport.supported) {
+          appendMsg("Encoder config not supported! " + JSON.stringify(config));
+          return;
+        }
+
+        const decoderConfig = {
+          codec: config.codec,
+          hardwareAcceleration: 'no-preference',
+          codedWidth: config.width,
+          codedHeight: config.height
+        };
+        const decoderSupport = await VideoDecoder.isConfigSupported(decoderConfig);
+        if (!decoderSupport.supported) {
+          appendMsg("Decoder config not supported! " + JSON.stringify(decoderConfig));
+          return;
+        }
+      } catch (e) {
+        appendMsg("Error checking config support: " + e.message);
+        return;
+      }
+
       let encoder = new VideoEncoder(init);
       encoder.configure(config);
 
