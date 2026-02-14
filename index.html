@@ -1,17 +1,73 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Demos</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 15px;
+        }
+        a {
+            display: block;
+            padding: 15px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            font-size: 1.1em;
+            text-align: center;
+        }
+        a:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        a:active {
+            transform: translateY(0);
+        }
+    </style>
 </head>
 <body>
-    <h1>Web Demos</h1>
-    <ul>
-        <li><a href="webcodecs/index.html">WebCodecs Test</a></li>
-        <li><a href="glitch/index.html">Glitch Demos</a></li>
-        <li><a href="pixel/index.html">Pixel Video Tests</a></li>
-        <li><a href="codec-compare.html">Codec Compare</a></li>
-        <li><a href="camera_demo.html">Camera Demo</a></li>
-        <li><a href="encoding-benchmark.html">Encoding Benchmark</a></li>
-    </ul>
+    <div class="container">
+        <h1>Web Demos</h1>
+        <ul>
+            <li><a href="webcodecs/index.html">WebCodecs Test</a></li>
+            <li><a href="glitch/index.html">Glitch Demos</a></li>
+            <li><a href="pixel/index.html">Pixel Video Tests</a></li>
+            <li><a href="codec-compare.html">Codec Compare</a></li>
+            <li><a href="camera_demo.html">Camera Demo</a></li>
+            <li><a href="encoding-benchmark.html">Encoding Benchmark</a></li>
+            <li><a href="encode_decode_support.html">Video Configuration Support Matrix</a></li>
+        </ul>
+    </div>
 </body>
 </html>
