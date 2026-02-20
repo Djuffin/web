@@ -1,29 +1,160 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebCodecs Web Tests</title>
+  <style>
+    :root {
+      --primary-color: #2563eb;
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    h1 {
+      font-size: 2.5rem;
+      color: var(--primary-color);
+      margin-bottom: 0.5rem;
+    }
+    .description {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+    .test-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+      width: 100%;
+      max-width: 1200px;
+    }
+    .test-card {
+      background: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: 0.75rem;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      color: inherit;
+      border: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+    }
+    .test-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+      border-color: var(--primary-color);
+    }
+    .test-title {
+      font-weight: 600;
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary-color);
+    }
+    .test-file {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+  </style>
 </head>
 <body>
-  <h1>WebCodecs Web Tests</h1>
-  <ul>
-    <li><a href="audio-encode-decode.html">audio-encode-decode.html</a></li>
-    <li><a href="convert-to-rgb.html">convert-to-rgb.html</a></li>
-    <li><a href="copyTo.html">copyTo.html</a></li>
-    <li><a href="draw-image.html">draw-image.html</a></li>
-    <li><a href="encode-color-space.html">encode-color-space.html</a></li>
-    <li><a href="encode-decode.html">encode-decode.html</a></li>
-    <li><a href="encode.html">encode.html</a></li>
-    <li><a href="encoding-framerate-resolutions.html">encoding-framerate-resolutions.html</a></li>
-    <li><a href="encoding-modes.html">encoding-modes.html</a></li>
-    <li><a href="encoding-rate-control.html">encoding-rate-control.html</a></li>
-    <li><a href="frame-qp-encoding.html">frame-qp-encoding.html</a></li>
-    <li><a href="frame-size-change.html">frame-size-change.html</a></li>
-    <li><a href="manual-svc.html">manual-svc.html</a></li>
-    <li><a href="mixed-source-encoding.html">mixed-source-encoding.html</a></li>
-    <li><a href="svc.html">svc.html</a></li>
-    <li><a href="terminate-worker.html">terminate-worker.html</a></li>
-    <li><a href="tex-image-2d.html">tex-image-2d.html</a></li>
-    <li><a href="webrtc-peer-connection.html">webrtc-peer-connection.html</a></li>
-  </ul>
+  <header>
+    <h1>WebCodecs Web Tests</h1>
+    <p class="description">A collection of manual and automated tests for WebCodecs features.</p>
+  </header>
+  <main class="test-grid">
+    <a href="audio-encode-decode.html" class="test-card">
+      <div class="test-title">Encode test (Audio)</div>
+      <div class="test-file">audio-encode-decode.html</div>
+    </a>
+    <a href="convert-to-rgb.html" class="test-card">
+      <div class="test-title">Convert frames to RGB</div>
+      <div class="test-file">convert-to-rgb.html</div>
+    </a>
+    <a href="copyTo.html" class="test-card">
+      <div class="test-title">copyTo() test</div>
+      <div class="test-file">copyTo.html</div>
+    </a>
+    <a href="crop-encode.html" class="test-card">
+      <div class="test-title">Crop, encode, decode, render test</div>
+      <div class="test-file">crop-encode.html</div>
+    </a>
+    <a href="draw-image.html" class="test-card">
+      <div class="test-title">drawImage() test</div>
+      <div class="test-file">draw-image.html</div>
+    </a>
+    <a href="encode-color-space.html" class="test-card">
+      <div class="test-title">Encode color space test</div>
+      <div class="test-file">encode-color-space.html</div>
+    </a>
+    <a href="encode-decode.html" class="test-card">
+      <div class="test-title">Encode, decode, render test</div>
+      <div class="test-file">encode-decode.html</div>
+    </a>
+    <a href="encode.html" class="test-card">
+      <div class="test-title">Encode test</div>
+      <div class="test-file">encode.html</div>
+    </a>
+    <a href="encoding-framerate-resolutions.html" class="test-card">
+      <div class="test-title">Encoding framerate resolutions test</div>
+      <div class="test-file">encoding-framerate-resolutions.html</div>
+    </a>
+    <a href="encoding-modes.html" class="test-card">
+      <div class="test-title">Encode test (Modes)</div>
+      <div class="test-file">encoding-modes.html</div>
+    </a>
+    <a href="encoding-rate-control.html" class="test-card">
+      <div class="test-title">Encoding bitrate test</div>
+      <div class="test-file">encoding-rate-control.html</div>
+    </a>
+    <a href="frame-qp-encoding.html" class="test-card">
+      <div class="test-title">Encode test (QP)</div>
+      <div class="test-file">frame-qp-encoding.html</div>
+    </a>
+    <a href="frame-size-change.html" class="test-card">
+      <div class="test-title">Frame size change test</div>
+      <div class="test-file">frame-size-change.html</div>
+    </a>
+    <a href="manual-svc.html" class="test-card">
+      <div class="test-title">Manual SVC encoding test</div>
+      <div class="test-file">manual-svc.html</div>
+    </a>
+    <a href="mixed-source-encoding.html" class="test-card">
+      <div class="test-title">Manual SVC encoding test (Mixed)</div>
+      <div class="test-file">mixed-source-encoding.html</div>
+    </a>
+    <a href="svc.html" class="test-card">
+      <div class="test-title">SVC encoding test</div>
+      <div class="test-file">svc.html</div>
+    </a>
+    <a href="terminate-worker.html" class="test-card">
+      <div class="test-title">Frame readback in a worker</div>
+      <div class="test-file">terminate-worker.html</div>
+    </a>
+    <a href="tex-image-2d.html" class="test-card">
+      <div class="test-title">texImage2D() test</div>
+      <div class="test-file">tex-image-2d.html</div>
+    </a>
+    <a href="webrtc-peer-connection.html" class="test-card">
+      <div class="test-title">RTCPeerConnection test</div>
+      <div class="test-file">webrtc-peer-connection.html</div>
+    </a>
+  </main>
 </body>
 </html>
