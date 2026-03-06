@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Mirror</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #eee;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        select,
+        button {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .preview-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #000;
+            border-radius: 8px;
+            min-height: 480px;
+            justify-content: center;
+        }
+
+        video {
+            max-width: 100%;
+            max-height: 70vh;
+            background: #000;
+            /* Flips the video horizontally to act like a mirror */
+            transform: scaleX(-1);
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+            text-align: center;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Camera Mirror</h1>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="resolution">Resolution</label>
+                <select id="resolution">
+                    <option value="640x480">SD (640x480)</option>
+                    <option value="1280x720" selected>HD (1280x720)</option>
+                    <option value="1920x1080">Full HD (1920x1080)</option>
+                    <option value="3840x2160">4K (3840x2160)</option>
+                </select>
+            </div>
+        </div>
+
+        <button id="toggleBtn" onclick="toggleCamera()">Start Camera</button>
+        <div id="status" class="status">Ready</div>
+
+        <div class="preview-area">
+            <video id="mirrorVideo" autoplay muted playsinline></video>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('mirrorVideo');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const statusDiv = document.getElementById('status');
+        const resolutionSelect = document.getElementById('resolution');
+
+        let stream = null;
+        let isRunning = false;
+
+        async function toggleCamera() {
+            if (isRunning) {
+                stopCamera();
+            } else {
+                await startCamera();
+            }
+        }
+
+        async function startCamera() {
+            try {
+                statusDiv.textContent = "Requesting camera access...";
+                toggleBtn.disabled = true;
+
+                const resString = resolutionSelect.value;
+                const [width, height] = resString.split('x').map(Number);
+
+                const constraints = {
+                    audio: false,
+                    video: {
+                        width: { ideal: width },
+                        height: { ideal: height },
+                        frameRate: { ideal: 30 }
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+
+                videoElement.onplaying = () => {
+                    statusDiv.textContent = `Playing at ${videoElement.videoWidth}x${videoElement.videoHeight}`;
+                };
+
+                isRunning = true;
+                toggleBtn.textContent = "Stop Camera";
+                toggleBtn.style.backgroundColor = "#dc3545"; // Red color
+            } catch (err) {
+                console.error(err);
+                statusDiv.textContent = "Error: " + err.message;
+            } finally {
+                toggleBtn.disabled = false;
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            videoElement.srcObject = null;
+            isRunning = false;
+            toggleBtn.textContent = "Start Camera";
+            toggleBtn.style.backgroundColor = "#007bff"; // Original blue color
+            statusDiv.textContent = "Ready";
+        }
+
+        // Automatically restart camera when resolution is changed
+        resolutionSelect.addEventListener('change', async () => {
+            if (isRunning) {
+                stopCamera();
+                await startCamera();
+            }
+        });
+    </script>
+
+</body>
+
+</html>
