@@ -178,7 +178,6 @@
                     <option value="prefer-hardware">Hardware</option>
                     <option value="prefer-software">Software</option>
                 </select>
-            </div>
             <div class="control-group">
                 <label for="frames">Frames to Encode</label>
                 <select id="frames">
@@ -186,7 +185,13 @@
                     <option value="300">300</option>
                     <option value="500">500</option>
                     <option value="1000">1000</option>
+                    <option value="0">Infinite</option>
                 </select>
+            </div>
+            <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px; padding-top: 20px;">
+                <input type="checkbox" id="skipDecoding" style="width: 20px; height: 20px; margin: 0;">
+                <label for="skipDecoding" style="margin: 0;">Skip Decoding</label>
+            </div>
             </div>
             <div class="control-group">
                 <label for="warmup">Warm-up Frames</label>
@@ -309,10 +314,15 @@
         }
 
         async function startBenchmark() {
-            if (isRunning) return;
+            if (isRunning) {
+                stopSignal = true;
+                statusDiv.textContent = "Stopping...";
+                return;
+            }
             isRunning = true;
             stopSignal = false;
-            runBtn.disabled = true;
+            runBtn.textContent = "Stop Benchmark";
+            runBtn.style.backgroundColor = "#dc3545";
             resultsArea.style.display = 'none';
             statusDiv.textContent = "Initializing...";
 
@@ -322,6 +332,8 @@
             const [width, height] = resString.split('x').map(Number);
             const acceleration = document.getElementById('acceleration').value;
             const totalFrames = parseInt(document.getElementById('frames').value);
+            const isInfinite = totalFrames === 0;
+            const skipDecoding = document.getElementById('skipDecoding').checked;
             const warmUpFrames = parseInt(document.getElementById('warmup').value);
 
             // Resize display canvas
@@ -377,29 +389,29 @@
             const latencies = [];
             const encodedChunks = [];
             const pendingFrames = new Map(); // timestamp -> startTime
+            let outputFrameCount = 0;
 
             const encoderInit = {
                 output: (chunk, metadata) => {
+                    outputFrameCount++;
                     const timestamp = chunk.timestamp;
                     if (pendingFrames.has(timestamp)) {
                         const startTime = pendingFrames.get(timestamp);
                         const latency = performance.now() - startTime;
                         pendingFrames.delete(timestamp);
 
-                        // Store chunk for later decoding
-                        encodedChunks.push({ chunk, metadata }); // Metadata is usually only on keyframes, but good to keep structure
+                        // Store chunk for later decoding if not skipping
+                        if (!skipDecoding) {
+                            encodedChunks.push({ chunk, metadata });
+                        }
 
                         // Store latency if we are past warm-up
-                        // The encodedChunks length represents how many frames have been outputted.
-                        // If encodedChunks.length is 1, it's the first frame.
-                        // If warmUpFrames is 10, we ignore the first 10 frames (indices 0 to 9).
-                        // So if length is 11 (index 10), we start recording.
-
-                        if (encodedChunks.length > warmUpFrames) {
+                        if (outputFrameCount > warmUpFrames) {
                             latencies.push(latency);
                         }
 
-                        statusDiv.textContent = `Encoding: ${encodedChunks.length} / ${totalFrames}`;
+                        const progress = isInfinite ? outputFrameCount : `${outputFrameCount} / ${totalFrames}`;
+                        statusDiv.textContent = `Encoding: ${progress} frames`;
                     }
                 },
                 error: (e) => {
@@ -445,7 +457,7 @@
             if (source === 'canvas-copy') {
                 // Manual loop for canvas copy
                 async function loop() {
-                    if (stopSignal || inputFrameCount >= totalFrames) {
+                    if (stopSignal || (!isInfinite && inputFrameCount >= totalFrames)) {
                         await finishEncoding();
                         return;
                     }
@@ -473,7 +485,7 @@
                 trackProcessor = new MediaStreamTrackProcessor({ track: videoTrack });
                 frameReader = trackProcessor.readable.getReader();
 
-                while (!stopSignal && inputFrameCount < totalFrames) {
+                while (!stopSignal && (isInfinite || inputFrameCount < totalFrames)) {
                     const result = await frameReader.read();
                     if (result.done) break;
 
@@ -490,7 +502,7 @@
                     inputFrameCount++;
                 }
                 // Release lock
-                frameReader.cancel();
+                if (frameReader) frameReader.cancel();
                 await finishEncoding();
             }
 
@@ -505,9 +517,14 @@
                 if (videoTrack) videoTrack.stop();
 
                 calculateStats();
-                startDecoding();
+                if (!skipDecoding) {
+                    await startDecoding();
+                } else {
+                    statusDiv.textContent = "Done (Decoding skipped).";
+                }
 
-                runBtn.disabled = false;
+                runBtn.textContent = "Run Benchmark";
+                runBtn.style.backgroundColor = "#007bff";
                 isRunning = false;
             }
 
