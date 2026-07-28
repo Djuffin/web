@@ -107,6 +107,12 @@
 
         <div class="controls">
             <div class="control-group">
+                <label for="cameraSelect">Camera Device</label>
+                <select id="cameraSelect">
+                    <option value="">Default Camera</option>
+                </select>
+            </div>
+            <div class="control-group">
                 <label for="resolution">Resolution</label>
                 <select id="resolution">
                     <option value="640x480">SD (640x480)</option>
@@ -130,9 +136,45 @@
         const toggleBtn = document.getElementById('toggleBtn');
         const statusDiv = document.getElementById('status');
         const resolutionSelect = document.getElementById('resolution');
+        const cameraSelect = document.getElementById('cameraSelect');
 
         let stream = null;
         let isRunning = false;
+
+        async function updateDeviceList() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                console.warn("enumerateDevices is not supported");
+                return;
+            }
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                const currentSelected = cameraSelect.value;
+                cameraSelect.innerHTML = '';
+
+                if (videoDevices.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No camera found';
+                    cameraSelect.appendChild(option);
+                    return;
+                }
+
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Camera ${index + 1}`;
+                    if (device.deviceId === currentSelected) {
+                        option.selected = true;
+                    }
+                    cameraSelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error("Error enumerating devices:", err);
+            }
+        }
 
         async function toggleCamera() {
             if (isRunning) {
@@ -149,14 +191,21 @@
 
                 const resString = resolutionSelect.value;
                 const [width, height] = resString.split('x').map(Number);
+                const selectedDeviceId = cameraSelect.value;
+
+                const videoConstraints = {
+                    width: { ideal: width },
+                    height: { ideal: height },
+                    frameRate: { ideal: 30 }
+                };
+
+                if (selectedDeviceId) {
+                    videoConstraints.deviceId = { exact: selectedDeviceId };
+                }
 
                 const constraints = {
                     audio: false,
-                    video: {
-                        width: { ideal: width },
-                        height: { ideal: height },
-                        frameRate: { ideal: 30 }
-                    }
+                    video: videoConstraints
                 };
 
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -169,6 +218,9 @@
                 isRunning = true;
                 toggleBtn.textContent = "Stop Camera";
                 toggleBtn.style.backgroundColor = "#dc3545"; // Red color
+
+                // Re-populate device list to update labels if permission was just granted
+                await updateDeviceList();
             } catch (err) {
                 console.error(err);
                 statusDiv.textContent = "Error: " + err.message;
@@ -189,13 +241,31 @@
             statusDiv.textContent = "Ready";
         }
 
-        // Automatically restart camera when resolution is changed
+        // Restart camera on camera selection or resolution change
+        cameraSelect.addEventListener('change', async () => {
+            if (isRunning) {
+                stopCamera();
+                await startCamera();
+            }
+        });
+
         resolutionSelect.addEventListener('change', async () => {
             if (isRunning) {
                 stopCamera();
                 await startCamera();
             }
         });
+
+        // Listen for hardware device addition/removal
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', () => {
+                console.log("Device change detected");
+                updateDeviceList();
+            });
+        }
+
+        // Initial device list population
+        updateDeviceList();
     </script>
 
 </body>
