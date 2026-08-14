@@ -86,8 +86,12 @@
             <video id="videoPreview" autoplay muted playsinline></video>
         </div>
         <div class="view-box">
-            <h3>Processed Frames (Canvas)</h3>
+            <h3>Direct VideoFrame (Canvas)</h3>
             <canvas id="canvasOutput"></canvas>
+        </div>
+        <div class="view-box">
+            <h3>Reconstructed from ArrayBuffer (Canvas)</h3>
+            <canvas id="canvasBufferOutput"></canvas>
         </div>
     </div>
 
@@ -98,6 +102,8 @@
         const videoPreview = document.getElementById('videoPreview');
         const canvasOutput = document.getElementById('canvasOutput');
         const ctx = canvasOutput.getContext('2d');
+        const canvasBufferOutput = document.getElementById('canvasBufferOutput');
+        const bufferCtx = canvasBufferOutput.getContext('2d');
 
         // Source canvas for animation (hidden or in-memory)
         const sourceCanvas = document.createElement('canvas');
@@ -203,6 +209,8 @@
                     if (loadCount !== myCount) return;
                     canvasOutput.width = videoPreview.videoWidth;
                     canvasOutput.height = videoPreview.videoHeight;
+                    canvasBufferOutput.width = videoPreview.videoWidth;
+                    canvasBufferOutput.height = videoPreview.videoHeight;
                     processStream(stream);
                 };
 
@@ -228,12 +236,44 @@
                         if (canvasOutput.width !== frame.displayWidth || canvasOutput.height !== frame.displayHeight) {
                             canvasOutput.width = frame.displayWidth;
                             canvasOutput.height = frame.displayHeight;
+                            canvasBufferOutput.width = frame.displayWidth;
+                            canvasBufferOutput.height = frame.displayHeight;
                         }
 
-                        // Draw frame to canvas
+                        // Draw original frame to canvas
                         ctx.drawImage(frame, 0, 0);
-                        
-                        // IMPORTANT: Close the frame to release memory
+
+                        // Read back frame data into an ArrayBuffer
+                        const buf = new Uint8Array(frame.allocationSize());
+                        const layout = await frame.copyTo(buf);
+
+                        // Create a new VideoFrame from the ArrayBuffer
+                        const frameInit = {
+                            format: frame.format,
+                            codedWidth: frame.codedWidth,
+                            codedHeight: frame.codedHeight,
+                            timestamp: frame.timestamp,
+                            layout: layout,
+                            displayWidth: frame.displayWidth,
+                            displayHeight: frame.displayHeight,
+                        };
+                        if (frame.duration !== null && frame.duration !== undefined) {
+                            frameInit.duration = frame.duration;
+                        }
+                        if (frame.visibleRect) {
+                            frameInit.visibleRect = frame.visibleRect;
+                        }
+                        if (frame.colorSpace) {
+                            frameInit.colorSpace = frame.colorSpace;
+                        }
+
+                        const reconstructedFrame = new VideoFrame(buf, frameInit);
+
+                        // Draw reconstructed frame to second canvas
+                        bufferCtx.drawImage(reconstructedFrame, 0, 0);
+
+                        // IMPORTANT: Close both frames to release memory
+                        reconstructedFrame.close();
                         frame.close();
                     }
                 }
